@@ -9,6 +9,7 @@ export const walletSetupSchema = z.object({
   password: z.string().optional(),
   generateNew: z.boolean().default(false),
   setActive: z.boolean().default(true),
+  skipPasswordProtection: z.boolean().default(false),
 });
 
 export type WalletSetupInput = z.infer<typeof walletSetupSchema>;
@@ -42,10 +43,23 @@ export const walletSetupTool = {
         description: 'Set this wallet as the active wallet for transactions',
         default: true,
       },
+      skipPasswordProtection: {
+        type: 'boolean',
+        description: 'Set to true to explicitly skip password protection. WARNING: This stores the private key unencrypted.',
+        default: false,
+      },
     },
   },
   handler: async (input: WalletSetupInput) => {
     const validated = walletSetupSchema.parse(input);
+
+    // Require explicit decision about password protection
+    if (!validated.password && !validated.skipPasswordProtection) {
+      throw new WalletError(
+        'Password protection decision required. Either provide a "password" to encrypt the wallet, ' +
+        'or set "skipPasswordProtection: true" to explicitly store the key unencrypted (not recommended for production).'
+      );
+    }
 
     // Check if wallet already exists
     if (walletExists(validated.name)) {
