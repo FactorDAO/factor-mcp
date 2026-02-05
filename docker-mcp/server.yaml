@@ -16,7 +16,7 @@ about:
   icon: https://pro.factor.fi/favicon.ico
 source:
   project: https://github.com/FactorDAO/factor-mcp
-  commit: a67ff45c2d52ca11910007a61dfc499885ebebbb
+  commit: e47fb9e3c13b10470d1b826917203e7bdef51dac
 config:
   description: Configure Factor Protocol MCP server with your Alchemy API key and optional wallet
   secrets:
