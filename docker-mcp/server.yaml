@@ -13,7 +13,7 @@ meta:
 about:
   title: Factor Protocol
   description: Manage DeFi vaults on Factor Protocol - create vaults, deposit/withdraw assets, and execute trading strategies (swaps, lending, borrowing) on Arbitrum, Base, and Ethereum
-  icon: https://avatars.githubusercontent.com/u/119836837?s=200&v=4
+  icon: https://pro.factor.fi/favicon.ico
 source:
   project: https://github.com/FactorDAO/factor-mcp
   commit: a67ff45c2d52ca11910007a61dfc499885ebebbb
