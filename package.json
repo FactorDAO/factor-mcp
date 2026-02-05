@@ -25,8 +25,8 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@factordao/sdk-studio": "file:../factor-studio-core/packages/factor-sdk-studio",
-    "@factordao/sdk": "file:../factor-studio-core/packages/factor-sdk",
+    "@factordao/sdk-studio": "pro-beta",
+    "@factordao/sdk": "pro-beta",
     "viem": "^1.10.14",
     "zod": "^3.22.4"
   },
