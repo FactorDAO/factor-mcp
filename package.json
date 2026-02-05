@@ -1,0 +1,41 @@
+{
+  "name": "@factordao/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Factor Protocol vault management",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "factor-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "factor",
+    "defi",
+    "vault",
+    "ai"
+  ],
+  "author": "Factor DAO",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@factordao/sdk-studio": "file:../factor-studio-core/packages/factor-sdk-studio",
+    "@factordao/sdk": "file:../factor-studio-core/packages/factor-sdk",
+    "viem": "^1.10.14",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "alchemyApiKey": "your_alchemy_api_key_here",
+  "defaultChain": "ARBITRUM_ONE",
+  "simulationMode": false,
+  "logLevel": "info",
+  "activeWallet": null
+}

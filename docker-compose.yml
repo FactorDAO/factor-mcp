@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  factor-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: factor-mcp:latest
+    container_name: factor-mcp
+
+    # Enable stdio for MCP transport
+    stdin_open: true
+    tty: true
+
+    # Environment variables
+    environment:
+      - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}
+      - DEFAULT_CHAIN=${DEFAULT_CHAIN:-ARBITRUM_ONE}
+      - SIMULATION_MODE=${SIMULATION_MODE:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    # Persistent storage for wallet and config
+    volumes:
+      - factor-mcp-data:/home/factor/.factor-mcp
+
+    # No ports needed - MCP uses stdio
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev
+
+volumes:
+  factor-mcp-data:
+    driver: local

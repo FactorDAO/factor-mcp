@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__factor__factor_get_config",
+      "mcp__factor__factor_get_factory_addresses",
+      "mcp__factor__factor_create_vault",
+      "mcp__factor__factor_get_transaction_status",
+      "mcp__factor__factor_get_owned_vaults",
+      "mcp__factor__factor_check_foundry",
+      "Bash(cast receipt:*)",
+      "mcp__factor__factor_get_vault_info",
+      "Bash(npm run build:*)",
+      "Bash(node:*)",
+      "Bash(cast call:*)",
+      "mcp__factor__factor_add_adapter",
+      "mcp__factor__factor_execute_manager"
+    ]
+  }
+}
