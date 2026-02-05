@@ -1,0 +1,537 @@
+[
+  {
+    "name": "factor_set_chain",
+    "description": "Set the active blockchain network for Factor Protocol operations. Supported chains: ARBITRUM_ONE (default), BASE, MAINNET (Ethereum).",
+    "arguments": [
+      {
+        "name": "chain",
+        "type": "string",
+        "desc": "The chain to switch to (ARBITRUM_ONE, BASE, MAINNET)"
+      }
+    ]
+  },
+  {
+    "name": "factor_set_rpc",
+    "description": "Configure a custom RPC endpoint for blockchain interactions. Overrides the default Alchemy RPC.",
+    "arguments": [
+      {
+        "name": "url",
+        "type": "string",
+        "desc": "The RPC URL to use (must be a valid URL)"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_config",
+    "description": "Get the current Factor MCP server configuration including active chain, RPC endpoint, simulation mode, and wallet info.",
+    "arguments": []
+  },
+  {
+    "name": "factor_wallet_setup",
+    "description": "Import an existing wallet from a private key or generate a new one. Optionally encrypt with a password. The wallet will be stored securely in ~/.factor-mcp/wallets/",
+    "arguments": [
+      {
+        "name": "privateKey",
+        "type": "string",
+        "desc": "Private key to import (64 hex chars, with or without 0x prefix)"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "Name for the wallet (default: 'default')"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Password to encrypt the private key"
+      },
+      {
+        "name": "generateNew",
+        "type": "boolean",
+        "desc": "Generate a new random wallet instead of importing"
+      },
+      {
+        "name": "setActive",
+        "type": "boolean",
+        "desc": "Set this wallet as the active wallet for transactions"
+      },
+      {
+        "name": "skipPasswordProtection",
+        "type": "boolean",
+        "desc": "Set to true to explicitly skip password protection (not recommended)"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_owned_vaults",
+    "description": "Get all Factor Pro vaults owned by an address. If no address is provided, uses the active wallet address.",
+    "arguments": [
+      {
+        "name": "ownerAddress",
+        "type": "string",
+        "desc": "Ethereum address to check vaults for"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_vault_info",
+    "description": "Get detailed information about a Factor Pro vault including name, symbol, assets, fees, managers, and supported adapters.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_shares",
+    "description": "Get the user's shares in a vault, including the total supply, price per share, and calculated value.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "userAddress",
+        "type": "string",
+        "desc": "Address to check shares for"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_executions",
+    "description": "Get the execution history of a vault, showing all manager transactions with decoded adapter calls.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "desc": "Maximum number of executions to return (default: 20)"
+      }
+    ]
+  },
+  {
+    "name": "factor_preview_deposit",
+    "description": "Preview a deposit to a Factor Pro vault. Returns expected shares to receive. This is a read-only operation.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "assetAddress",
+        "type": "string",
+        "desc": "The address of the token to deposit"
+      },
+      {
+        "name": "amount",
+        "type": "string",
+        "desc": "Amount to deposit in base units (wei)"
+      },
+      {
+        "name": "userAddress",
+        "type": "string",
+        "desc": "Address to check balance for"
+      }
+    ]
+  },
+  {
+    "name": "factor_preview_withdraw",
+    "description": "Preview a withdrawal from a Factor Pro vault. Returns expected assets to receive. This is a read-only operation.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "shares",
+        "type": "string",
+        "desc": "Amount of shares to redeem in base units (wei)"
+      },
+      {
+        "name": "userAddress",
+        "type": "string",
+        "desc": "Address to check share balance for"
+      }
+    ]
+  },
+  {
+    "name": "factor_deposit",
+    "description": "Execute a deposit to a Factor Pro vault. Will automatically approve tokens if needed. Requires a configured wallet with sufficient balance.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "assetAddress",
+        "type": "string",
+        "desc": "The address of the token to deposit"
+      },
+      {
+        "name": "amount",
+        "type": "string",
+        "desc": "Amount to deposit in base units (wei)"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if the wallet is encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_withdraw",
+    "description": "Execute a withdrawal (redeem shares) from a Factor Pro vault. Requires a configured wallet with sufficient share balance.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "shares",
+        "type": "string",
+        "desc": "Amount of shares to redeem in base units (wei)"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if the wallet is encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_create_vault",
+    "description": "Deploy a new Factor Studio Pro vault with full configuration options. Fees are in percentage (0-100). Use factor_get_factory_addresses to find valid accounting adapters for assets.",
+    "arguments": [
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "Name for the vault (max 50 characters)"
+      },
+      {
+        "name": "symbol",
+        "type": "string",
+        "desc": "Symbol for the vault token (max 10 characters)"
+      },
+      {
+        "name": "assetDenominatorAddress",
+        "type": "string",
+        "desc": "Address of the denominator token (main deposit token, e.g., USDC)"
+      },
+      {
+        "name": "depositFee",
+        "type": "number",
+        "desc": "Deposit fee percentage (0-100)"
+      },
+      {
+        "name": "withdrawFee",
+        "type": "number",
+        "desc": "Withdraw fee percentage (0-100)"
+      },
+      {
+        "name": "managementFee",
+        "type": "number",
+        "desc": "Annual management fee percentage (0-100)"
+      },
+      {
+        "name": "performanceFee",
+        "type": "number",
+        "desc": "Performance fee percentage (0-100)"
+      },
+      {
+        "name": "maxCap",
+        "type": "string",
+        "desc": "Maximum vault cap in base units"
+      },
+      {
+        "name": "immutable",
+        "type": "boolean",
+        "desc": "If true, creates a vault without management adapters"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_execute_manager",
+    "description": "Execute a strategy on a vault as a manager. This allows swapping, lending, borrowing and other DeFi operations within the vault.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "steps",
+        "type": "array",
+        "desc": "Array of strategy steps to execute with protocol, action, and params"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_factory_addresses",
+    "description": "Get all whitelisted assets, adapters, and their accounting addresses from the factory. Use this to find the correct accounting adapter for an asset before creating a vault.",
+    "arguments": []
+  },
+  {
+    "name": "factor_validate_vault_config",
+    "description": "Validate vault configuration before deployment. Checks if all adapters, assets, and accounting addresses are whitelisted in the factory.",
+    "arguments": [
+      {
+        "name": "assetAddresses",
+        "type": "array",
+        "desc": "Asset addresses to validate"
+      },
+      {
+        "name": "assetAccountingAddresses",
+        "type": "array",
+        "desc": "Asset accounting adapter addresses to validate"
+      },
+      {
+        "name": "managerAdapters",
+        "type": "array",
+        "desc": "Manager adapter addresses to validate"
+      }
+    ]
+  },
+  {
+    "name": "factor_add_adapter",
+    "description": "Add a manager adapter to a Factor Pro vault. This allows the vault to interact with specific DeFi protocols (e.g., Uniswap, Aave, Pendle).",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault contract address"
+      },
+      {
+        "name": "adapterAddress",
+        "type": "string",
+        "desc": "The adapter contract address to add"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_list_adapters",
+    "description": "List available protocol adapters for building strategies. Adapters connect to DeFi protocols like Aave, Morpho, Uniswap, etc.",
+    "arguments": [
+      {
+        "name": "protocol",
+        "type": "string",
+        "desc": "Filter by protocol name (optional)"
+      }
+    ]
+  },
+  {
+    "name": "factor_list_building_blocks",
+    "description": "List available building blocks for composing strategies. Building blocks are actions like LEND, BORROW, SWAP, STAKE, LP, HARVEST, FLASH_LOAN.",
+    "arguments": [
+      {
+        "name": "type",
+        "type": "string",
+        "desc": "Filter by block type (optional)"
+      },
+      {
+        "name": "adapter",
+        "type": "string",
+        "desc": "Filter by adapter ID (optional)"
+      }
+    ]
+  },
+  {
+    "name": "factor_build_strategy",
+    "description": "Build a multi-step DeFi strategy for a vault. Combine building blocks like LEND, BORROW, SWAP to create complex strategies.",
+    "arguments": [
+      {
+        "name": "vaultAddress",
+        "type": "string",
+        "desc": "The vault to execute the strategy on"
+      },
+      {
+        "name": "steps",
+        "type": "array",
+        "desc": "Array of strategy steps to execute in order"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "Optional name for the strategy"
+      }
+    ]
+  },
+  {
+    "name": "factor_simulate_strategy",
+    "description": "Simulate a built strategy to verify it will execute correctly. This is a read-only operation that uses eth_call to simulate the transaction.",
+    "arguments": [
+      {
+        "name": "strategyId",
+        "type": "string",
+        "desc": "The strategy ID returned from factor_build_strategy"
+      }
+    ]
+  },
+  {
+    "name": "factor_execute_strategy",
+    "description": "Execute a built strategy on-chain. The strategy must have been built with factor_build_strategy first. Requires a configured wallet.",
+    "arguments": [
+      {
+        "name": "strategyId",
+        "type": "string",
+        "desc": "The strategy ID returned from factor_build_strategy"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_preview_transaction",
+    "description": "Preview a transaction with gas estimates before execution. This is a read-only operation.",
+    "arguments": [
+      {
+        "name": "to",
+        "type": "string",
+        "desc": "The recipient address"
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "desc": "The transaction calldata (hex string)"
+      },
+      {
+        "name": "value",
+        "type": "string",
+        "desc": "The value to send in wei (optional)"
+      }
+    ]
+  },
+  {
+    "name": "factor_get_transaction_status",
+    "description": "Check the status of a transaction by its hash. Returns pending, success, or failed status along with block and gas information.",
+    "arguments": [
+      {
+        "name": "hash",
+        "type": "string",
+        "desc": "The transaction hash (66 character hex string starting with 0x)"
+      }
+    ]
+  },
+  {
+    "name": "factor_check_foundry",
+    "description": "Check if Foundry suite (cast, anvil, forge) and Rust are installed. Foundry enables advanced features like transaction simulation on forked networks.",
+    "arguments": []
+  },
+  {
+    "name": "factor_cast_call",
+    "description": "Execute a read-only contract call using Foundry cast. Useful for checking balances, allowances, and contract state.",
+    "arguments": [
+      {
+        "name": "to",
+        "type": "string",
+        "desc": "Contract address to call"
+      },
+      {
+        "name": "signature",
+        "type": "string",
+        "desc": "Function signature (e.g., 'balanceOf(address)(uint256)')"
+      },
+      {
+        "name": "args",
+        "type": "array",
+        "desc": "Function arguments"
+      },
+      {
+        "name": "block",
+        "type": "string",
+        "desc": "Block number or 'latest'"
+      },
+      {
+        "name": "decode",
+        "type": "boolean",
+        "desc": "Decode the output (default: true)"
+      }
+    ]
+  },
+  {
+    "name": "factor_simulate_transaction",
+    "description": "Simulate a transaction on a forked network using Foundry anvil. This allows testing transactions without spending real gas or tokens.",
+    "arguments": [
+      {
+        "name": "to",
+        "type": "string",
+        "desc": "Target contract address"
+      },
+      {
+        "name": "signature",
+        "type": "string",
+        "desc": "Function signature (alternative to data)"
+      },
+      {
+        "name": "args",
+        "type": "array",
+        "desc": "Function arguments (used with signature)"
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "desc": "Calldata (hex string starting with 0x)"
+      },
+      {
+        "name": "value",
+        "type": "string",
+        "desc": "ETH value in wei (default: 0)"
+      },
+      {
+        "name": "gasLimit",
+        "type": "string",
+        "desc": "Gas limit (default: auto)"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "Wallet password if encrypted"
+      }
+    ]
+  },
+  {
+    "name": "factor_decode_error",
+    "description": "Decode contract error data using Foundry cast. Useful for understanding why a transaction reverted.",
+    "arguments": [
+      {
+        "name": "data",
+        "type": "string",
+        "desc": "Error data to decode (hex string starting with 0x)"
+      },
+      {
+        "name": "signature",
+        "type": "string",
+        "desc": "Known error signature to try decoding with"
+      }
+    ]
+  }
+]

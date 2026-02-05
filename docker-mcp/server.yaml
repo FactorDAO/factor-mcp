@@ -1,0 +1,26 @@
+name: factor
+image: mcp/factor
+type: server
+meta:
+  category: finance
+  tags:
+    - defi
+    - blockchain
+    - ethereum
+    - arbitrum
+    - vaults
+    - trading
+about:
+  title: Factor Protocol
+  description: Manage DeFi vaults on Factor Protocol - create vaults, deposit/withdraw assets, and execute trading strategies (swaps, lending, borrowing) on Arbitrum, Base, and Ethereum
+  icon: https://avatars.githubusercontent.com/u/119836837?s=200&v=4
+source:
+  project: https://github.com/FactorDAO/factor-mcp
+  commit: a67ff45c2d52ca11910007a61dfc499885ebebbb
+config:
+  description: Configure Factor Protocol MCP server with your Alchemy API key and optional wallet
+  secrets:
+    - name: factor.alchemy_api_key
+      env: ALCHEMY_API_KEY
+      example: <YOUR_ALCHEMY_API_KEY>
+      description: Alchemy API key for RPC access to Arbitrum, Base, and Ethereum
