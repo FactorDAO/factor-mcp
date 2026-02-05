@@ -2,6 +2,12 @@
 
 This guide explains how to use the Factor MCP Server tools to manage DeFi vaults on the Factor Protocol.
 
+## Quick Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh | bash
+```
+
 ## Overview
 
 Factor Protocol is a DeFi infrastructure that allows users to create and manage "Pro Vaults" - smart contract vaults that can hold multiple assets and execute complex DeFi strategies (swapping, lending, borrowing, liquidity provision, etc.).

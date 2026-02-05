@@ -2,6 +2,12 @@
 
 This is an MCP server for managing Factor Protocol DeFi vaults using the `@factordao/sdk-studio`.
 
+## Quick Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh | bash
+```
+
 ## Requirements
 
 ### Required

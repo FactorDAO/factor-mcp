@@ -13,7 +13,16 @@
       "Bash(node:*)",
       "Bash(cast call:*)",
       "mcp__factor__factor_add_adapter",
-      "mcp__factor__factor_execute_manager"
+      "mcp__factor__factor_execute_manager",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd Factor MCP server with vault management tools\n\n- Add 28 tools for Factor Protocol vault operations\n- Vault tools: create, deposit, withdraw, get info, shares, executions\n- Strategy tools: list adapters, build/simulate/execute strategies\n- Config tools: set chain, RPC, wallet setup\n- Foundry tools: cast call, simulate transaction, decode error\n- Auto-include AdapterManagementAdapter and AssetDebtAdapter on vault creation\n- New add-adapter tool for adding adapters via executeByManager pattern\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(npm view:*)",
+      "Bash(npm install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(chmod:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)"
     ]
   }
 }

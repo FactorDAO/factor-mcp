@@ -43,7 +43,8 @@ ENV PATH="${HOME}/.cargo/bin:${HOME}/.foundry/bin:${PATH}"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # Install Foundry
-RUN curl -L https://foundry.paradigm.xyz | bash && \
+RUN mkdir -p ${HOME}/.foundry/bin && \
+    curl -L https://foundry.paradigm.xyz | bash || true && \
     ${HOME}/.foundry/bin/foundryup
 
 # Switch back to root to copy files

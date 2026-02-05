@@ -12,14 +12,24 @@ An MCP (Model Context Protocol) server that enables AI tools to interact with Fa
 
 ## Quick Start
 
-### Installation
+### One-Line Install
 
 ```bash
-# Clone and install
+curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh | bash
+```
+
+This will:
+- Install Rust (if not present)
+- Install Foundry (cast, anvil, forge)
+- Clone and build Factor MCP
+- Create `factor-mcp` command
+
+### Manual Installation
+
+```bash
+git clone https://github.com/FactorDAO/factor-mcp.git
 cd factor-mcp
 npm install
-
-# Build
 npm run build
 ```
 
