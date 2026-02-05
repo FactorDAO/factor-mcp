@@ -1,5 +1,5 @@
 # Factor MCP Server Dockerfile
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
@@ -17,13 +17,37 @@ COPY src ./src
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
+# Install dependencies for Rust and Foundry
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for security
-RUN addgroup -g 1001 -S factor && \
-    adduser -S factor -u 1001 -G factor
+RUN groupadd -g 1001 factor && \
+    useradd -m -u 1001 -g factor factor
+
+# Switch to non-root user for Rust/Foundry installation
+USER factor
+
+# Set home directory
+ENV HOME=/home/factor
+ENV PATH="${HOME}/.cargo/bin:${HOME}/.foundry/bin:${PATH}"
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# Install Foundry
+RUN curl -L https://foundry.paradigm.xyz | bash && \
+    ${HOME}/.foundry/bin/foundryup
+
+# Switch back to root to copy files
+USER root
 
 # Copy built files and production dependencies
 COPY --from=builder /app/dist ./dist
@@ -32,13 +56,11 @@ COPY --from=builder /app/package.json ./
 
 # Create config directory with correct permissions
 RUN mkdir -p /home/factor/.factor-mcp && \
-    chown -R factor:factor /home/factor/.factor-mcp
+    chown -R factor:factor /home/factor/.factor-mcp && \
+    chown -R factor:factor /app
 
 # Switch to non-root user
 USER factor
-
-# Set home directory for config storage
-ENV HOME=/home/factor
 
 # Default environment variables
 ENV NODE_ENV=production
