@@ -5,9 +5,19 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { encrypt, decrypt, isEncrypted, type EncryptedData } from './encryption.js';
 import { WalletError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { decryptKeystoreV3 } from './keystore-crypto.js';
+import {
+  foundryWalletExists,
+  readFoundryKeystore,
+  getFoundryWalletAddress,
+  listFoundryWallets,
+  importToFoundryKeystore,
+} from './foundry-keystore.js';
 
 const CONFIG_DIR = join(homedir(), '.factor-mcp');
 const WALLETS_DIR = join(CONFIG_DIR, 'wallets');
+
+export type WalletStorageType = 'factor-mcp' | 'foundry-keystore';
 
 export interface WalletData {
   name: string;
@@ -23,6 +33,7 @@ export interface WalletInfo {
   address: string;
   encrypted: boolean;
   createdAt: string;
+  storageType: WalletStorageType;
 }
 
 function ensureDirectories(): void {
@@ -43,11 +54,31 @@ function getWalletPath(name: string): string {
   return join(WALLETS_DIR, `${sanitized}.json`);
 }
 
-export function walletExists(name: string): boolean {
+/**
+ * Detect where a wallet is stored.
+ * Checks factor-mcp location first, then Foundry keystore.
+ */
+export function getWalletStorageType(name: string): WalletStorageType | null {
   ensureDirectories();
-  return existsSync(getWalletPath(name));
+  if (existsSync(getWalletPath(name))) {
+    return 'factor-mcp';
+  }
+  if (foundryWalletExists(name)) {
+    return 'foundry-keystore';
+  }
+  return null;
 }
 
+/**
+ * Check if a wallet exists in either storage location
+ */
+export function walletExists(name: string): boolean {
+  return getWalletStorageType(name) !== null;
+}
+
+/**
+ * List wallets from the factor-mcp storage only (legacy)
+ */
 export function listWallets(): WalletInfo[] {
   ensureDirectories();
 
@@ -66,6 +97,7 @@ export function listWallets(): WalletInfo[] {
         address: data.address,
         encrypted: data.encrypted,
         createdAt: data.createdAt,
+        storageType: 'factor-mcp',
       });
     } catch {
       // Skip invalid wallet files
@@ -76,13 +108,29 @@ export function listWallets(): WalletInfo[] {
   return wallets;
 }
 
+/**
+ * List wallets from both factor-mcp and Foundry keystore locations
+ */
+export function listAllWallets(): WalletInfo[] {
+  const factorWallets = listWallets();
+
+  const foundryWallets: WalletInfo[] = listFoundryWallets().map(fw => ({
+    name: fw.name,
+    address: fw.address,
+    encrypted: true, // Foundry keystores are always encrypted
+    createdAt: '', // Not available from keystore format
+    storageType: 'foundry-keystore' as WalletStorageType,
+  }));
+
+  return [...factorWallets, ...foundryWallets];
+}
+
 export function importWallet(
   privateKey: string,
   name: string = 'default',
-  password?: string
+  password?: string,
+  storageType: WalletStorageType = 'factor-mcp',
 ): WalletInfo {
-  ensureDirectories();
-
   // Validate private key
   let normalizedKey = privateKey;
   if (!normalizedKey.startsWith('0x')) {
@@ -96,6 +144,29 @@ export function importWallet(
   // Get address from private key
   const account = privateKeyToAccount(normalizedKey as `0x${string}`);
   const address = account.address;
+
+  if (storageType === 'foundry-keystore') {
+    if (!password) {
+      throw new WalletError('Password is required for Foundry keystore wallets');
+    }
+
+    if (foundryWalletExists(name)) {
+      throw new WalletError(`Foundry keystore "${name}" already exists`);
+    }
+
+    importToFoundryKeystore(normalizedKey, name, password, address);
+
+    return {
+      name,
+      address,
+      encrypted: true,
+      createdAt: new Date().toISOString(),
+      storageType: 'foundry-keystore',
+    };
+  }
+
+  // Legacy factor-mcp storage
+  ensureDirectories();
 
   const walletPath = getWalletPath(name);
 
@@ -126,12 +197,17 @@ export function importWallet(
     address: walletData.address,
     encrypted: walletData.encrypted,
     createdAt: walletData.createdAt,
+    storageType: 'factor-mcp',
   };
 }
 
-export function generateWallet(name: string = 'default', password?: string): WalletInfo {
+export function generateWallet(
+  name: string = 'default',
+  password?: string,
+  storageType: WalletStorageType = 'factor-mcp',
+): WalletInfo {
   const privateKey = generatePrivateKey();
-  return importWallet(privateKey, name, password);
+  return importWallet(privateKey, name, password, storageType);
 }
 
 export function getWallet(name: string): WalletData {
@@ -146,7 +222,30 @@ export function getWallet(name: string): WalletData {
   return data;
 }
 
+/**
+ * Get the private key for a wallet, detecting storage type automatically.
+ *
+ * Flow:
+ * 1. Check ~/.factor-mcp/wallets/{name}.json
+ * 2. Check ~/.foundry/keystores/{name}
+ * 3. Decrypt using the appropriate method
+ */
 export function getPrivateKey(name: string, password?: string): string {
+  const storage = getWalletStorageType(name);
+
+  if (!storage) {
+    throw new WalletError(`Wallet "${name}" not found in factor-mcp or Foundry keystore`);
+  }
+
+  if (storage === 'foundry-keystore') {
+    if (!password) {
+      throw new WalletError('Password required for Foundry keystore wallet');
+    }
+    const keystore = readFoundryKeystore(name);
+    return decryptKeystoreV3(keystore, password);
+  }
+
+  // factor-mcp storage
   const wallet = getWallet(name);
 
   if (wallet.encrypted) {
@@ -178,7 +277,20 @@ export function deleteWallet(name: string): void {
   logger.info(`Wallet deleted: ${name}`);
 }
 
+/**
+ * Get the address for a wallet, detecting storage type automatically.
+ */
 export function getWalletAddress(name: string): string {
+  const storage = getWalletStorageType(name);
+
+  if (!storage) {
+    throw new WalletError(`Wallet "${name}" not found in factor-mcp or Foundry keystore`);
+  }
+
+  if (storage === 'foundry-keystore') {
+    return getFoundryWalletAddress(name);
+  }
+
   const wallet = getWallet(name);
   return wallet.address;
 }

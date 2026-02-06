@@ -97,7 +97,7 @@ export const depositTool = {
       const proVault = new StudioProVault({
         chainId,
         vaultAddress,
-        environment: 'production',
+        environment: configManager.getEnvironment(),
         jsonRpcUrl: configManager.getRpcUrl(),
       });
 

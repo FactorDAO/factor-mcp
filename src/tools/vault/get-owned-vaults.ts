@@ -61,7 +61,7 @@ export const getOwnedVaultsTool = {
     try {
       const proVaultStats = new StudioProVaultStats({
         chainId,
-        environment: 'production',
+        environment: configManager.getEnvironment(),
         jsonRpcUrl: configManager.getRpcUrl(),
       });
 

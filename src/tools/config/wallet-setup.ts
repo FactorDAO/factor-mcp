@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { configManager } from '../../config/index.js';
-import { importWallet, generateWallet, listWallets, walletExists } from '../../wallet/key-manager.js';
+import { importWallet, generateWallet, listAllWallets, walletExists, type WalletStorageType } from '../../wallet/key-manager.js';
+import { foundryWalletExists, getFoundryWalletAddress } from '../../wallet/foundry-keystore.js';
 import { WalletError } from '../../utils/errors.js';
 
 export const walletSetupSchema = z.object({
@@ -10,6 +11,8 @@ export const walletSetupSchema = z.object({
   generateNew: z.boolean().default(false),
   setActive: z.boolean().default(true),
   skipPasswordProtection: z.boolean().default(false),
+  storageType: z.enum(['factor-mcp', 'foundry-keystore']).default('foundry-keystore'),
+  useExistingFoundryKeystore: z.boolean().default(false),
 });
 
 export type WalletSetupInput = z.infer<typeof walletSetupSchema>;
@@ -48,17 +51,73 @@ export const walletSetupTool = {
         description: 'Set to true to explicitly skip password protection. WARNING: This stores the private key unencrypted.',
         default: false,
       },
+      storageType: {
+        type: 'string',
+        enum: ['factor-mcp', 'foundry-keystore'],
+        description: 'Storage backend for the wallet. "foundry-keystore" (default) stores in ~/.foundry/keystores/ using Web3 V3 format (compatible with cast, geth). "factor-mcp" stores in ~/.factor-mcp/wallets/ using custom encryption.',
+        default: 'foundry-keystore',
+      },
+      useExistingFoundryKeystore: {
+        type: 'boolean',
+        description: 'Use an existing Foundry keystore wallet (from ~/.foundry/keystores/) instead of importing or generating. Set name to the keystore file name.',
+        default: false,
+      },
     },
   },
   handler: async (input: WalletSetupInput) => {
     const validated = walletSetupSchema.parse(input);
 
-    // Require explicit decision about password protection
-    if (!validated.password && !validated.skipPasswordProtection) {
-      throw new WalletError(
-        'Password protection decision required. Either provide a "password" to encrypt the wallet, ' +
-        'or set "skipPasswordProtection: true" to explicitly store the key unencrypted (not recommended for production).'
-      );
+    // Handle using an existing Foundry keystore
+    if (validated.useExistingFoundryKeystore) {
+      if (!foundryWalletExists(validated.name)) {
+        throw new WalletError(
+          `Foundry keystore "${validated.name}" not found in ~/.foundry/keystores/. ` +
+          'Create one with: cast wallet import <name> --interactive'
+        );
+      }
+
+      const address = getFoundryWalletAddress(validated.name);
+
+      if (validated.setActive) {
+        configManager.setWalletName(validated.name);
+      }
+
+      return {
+        success: true,
+        wallet: {
+          name: validated.name,
+          address,
+          encrypted: true,
+          storageType: 'foundry-keystore',
+          isActive: validated.setActive,
+        },
+        securityNote: 'Using existing Foundry keystore. Password will be required for all write operations.',
+        allWallets: listAllWallets().map(w => ({
+          name: w.name,
+          address: w.address,
+          encrypted: w.encrypted,
+          storageType: w.storageType,
+          isActive: w.name === configManager.getWalletName(),
+        })),
+      };
+    }
+
+    // For foundry-keystore, password is always required
+    if (validated.storageType === 'foundry-keystore') {
+      if (!validated.password) {
+        throw new WalletError(
+          'Password is required for Foundry keystore wallets. ' +
+          'Provide a "password" to encrypt the wallet, or use storageType: "factor-mcp" with skipPasswordProtection for unencrypted storage.'
+        );
+      }
+    } else {
+      // factor-mcp: require explicit decision about password protection
+      if (!validated.password && !validated.skipPasswordProtection) {
+        throw new WalletError(
+          'Password protection decision required. Either provide a "password" to encrypt the wallet, ' +
+          'or set "skipPasswordProtection: true" to explicitly store the key unencrypted (not recommended for production).'
+        );
+      }
     }
 
     // Check if wallet already exists
@@ -67,11 +126,12 @@ export const walletSetupTool = {
     }
 
     let walletInfo;
+    const storageType = validated.storageType as WalletStorageType;
 
     if (validated.generateNew) {
-      walletInfo = generateWallet(validated.name, validated.password);
+      walletInfo = generateWallet(validated.name, validated.password, storageType);
     } else if (validated.privateKey) {
-      walletInfo = importWallet(validated.privateKey, validated.name, validated.password);
+      walletInfo = importWallet(validated.privateKey, validated.name, validated.password, storageType);
     } else {
       throw new WalletError('Either privateKey or generateNew must be provided');
     }
@@ -87,16 +147,18 @@ export const walletSetupTool = {
         name: walletInfo.name,
         address: walletInfo.address,
         encrypted: walletInfo.encrypted,
+        storageType: walletInfo.storageType,
         createdAt: walletInfo.createdAt,
         isActive: validated.setActive,
       },
       securityNote: walletInfo.encrypted
         ? 'Private key is encrypted. You will need the password for all write operations.'
         : 'WARNING: Private key is stored unencrypted. Consider using a password for production.',
-      allWallets: listWallets().map(w => ({
+      allWallets: listAllWallets().map(w => ({
         name: w.name,
         address: w.address,
         encrypted: w.encrypted,
+        storageType: w.storageType,
         isActive: w.name === configManager.getWalletName(),
       })),
     };

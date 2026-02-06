@@ -26,7 +26,18 @@
       "Bash(docker logs:*)",
       "Bash(docker stop:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh repo fork:*)",
+      "Bash(gh repo list:*)",
+      "Bash(git remote add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(xargs:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr edit 1067 --repo docker/mcp-registry --body \"$\\(cat <<''EOF''\n## Summary\n\n- Add Factor Protocol MCP server for managing DeFi vaults on EVM chains\n\n## What is Factor Protocol?\n\nFactor Protocol is a DeFi infrastructure that allows users to create and manage \"Pro Vaults\" - smart contract vaults that can hold multiple assets and execute complex DeFi strategies \\(swapping, lending, borrowing, liquidity provision, etc.\\).\n\n## Features\n\n- **28 MCP tools** for complete vault management\n- **Multi-chain support**: Arbitrum One, Base, Ethereum Mainnet\n- **Secure wallet management**: AES-256-GCM encryption with PBKDF2 key derivation\n- **Simulation mode**: Preview transactions before execution\n- **Strategy building**: Compose DeFi strategies using building blocks\n\n## Tool Categories\n\n| Category | Tools | Description |\n|----------|-------|-------------|\n| Configuration | 4 | Chain switching, RPC config, wallet setup |\n| Vault Operations | 13 | Create vaults, deposit/withdraw, execute strategies |\n| Strategy Building | 5 | Build, simulate, and execute multi-step DeFi strategies |\n| Transactions | 2 | Preview and check transaction status |\n| Foundry Tools | 4 | Advanced debugging with cast/anvil |\n\n## Configuration Required\n\n- `ALCHEMY_API_KEY` - Alchemy API key for RPC access to Arbitrum, Base, and Ethereum\n\n## Links\n\n- **Source**: https://github.com/FactorDAO/factor-mcp\n- **Documentation**: https://github.com/FactorDAO/factor-mcp/blob/main/SKILL.md\n- **Factor Protocol**: https://factor.fi\n\n## Test Plan\n\n- [ ] Build succeeds with `task build --tools factor`\n- [ ] Tools list correctly in Docker Desktop MCP catalog\n- [ ] Configuration with Alchemy API key works\n- [ ] Basic vault queries work \\(factor_get_config, factor_get_vault_info\\)\nEOF\n\\)\")",
+      "Bash(gh api:*)",
+      "Bash(git rebase -i d2c3e98~1 --exec 'git commit --amend --no-edit --author=\"\"$\\(git log -1 --format=%an\\) <$\\(git log -1 --format=%ae\\)>\"\" -m \"\"$\\(git log -1 --format=%B | grep -v \"\"Co-Authored-By\"\"\\)\"\"')",
+      "Bash(git stash:*)"
     ]
   }
 }

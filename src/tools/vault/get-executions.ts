@@ -58,7 +58,7 @@ export const getExecutionsTool = {
       const proVaultStats = new StudioProVaultStats({
         chainId,
         vaultAddress,
-        environment: 'production',
+        environment: configManager.getEnvironment(),
         jsonRpcUrl: configManager.getRpcUrl(),
       });
 

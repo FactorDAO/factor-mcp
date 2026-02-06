@@ -15,7 +15,6 @@ import type {
   DepositPreview,
   WithdrawPreview,
   AdapterInfo,
-  BuildingBlockInfo,
   SendTransactionParams,
 } from './types.js';
 
@@ -308,6 +307,13 @@ export function getKnownAdapters(): AdapterInfo[] {
       description: 'Aave V3 lending protocol adapter',
     },
     {
+      id: 'compound-v3',
+      name: 'Compound V3',
+      protocol: 'Compound',
+      supportedActions: ['LEND', 'BORROW', 'REPAY', 'WITHDRAW'],
+      description: 'Compound V3 (Comet) lending protocol adapter',
+    },
+    {
       id: 'morpho',
       name: 'Morpho',
       protocol: 'Morpho',
@@ -341,92 +347,6 @@ export function getKnownAdapters(): AdapterInfo[] {
       protocol: 'Pendle',
       supportedActions: ['LP', 'STAKE', 'HARVEST'],
       description: 'Pendle yield trading adapter',
-    },
-  ];
-}
-
-export function getKnownBuildingBlocks(): BuildingBlockInfo[] {
-  return [
-    {
-      id: 'lend',
-      name: 'Lend',
-      type: 'LEND',
-      adapter: 'any',
-      description: 'Supply assets to a lending protocol',
-      parameters: [
-        { name: 'asset', type: 'address', required: true, description: 'Token to lend' },
-        { name: 'amount', type: 'uint256', required: true, description: 'Amount to lend' },
-      ],
-    },
-    {
-      id: 'borrow',
-      name: 'Borrow',
-      type: 'BORROW',
-      adapter: 'any',
-      description: 'Borrow assets from a lending protocol',
-      parameters: [
-        { name: 'asset', type: 'address', required: true, description: 'Token to borrow' },
-        { name: 'amount', type: 'uint256', required: true, description: 'Amount to borrow' },
-      ],
-    },
-    {
-      id: 'swap',
-      name: 'Swap',
-      type: 'SWAP',
-      adapter: 'any',
-      description: 'Swap tokens via DEX',
-      parameters: [
-        { name: 'tokenIn', type: 'address', required: true, description: 'Input token' },
-        { name: 'tokenOut', type: 'address', required: true, description: 'Output token' },
-        { name: 'amountIn', type: 'uint256', required: true, description: 'Input amount' },
-        { name: 'minAmountOut', type: 'uint256', required: true, description: 'Minimum output' },
-      ],
-    },
-    {
-      id: 'stake',
-      name: 'Stake',
-      type: 'STAKE',
-      adapter: 'any',
-      description: 'Stake tokens for rewards',
-      parameters: [
-        { name: 'asset', type: 'address', required: true, description: 'Token to stake' },
-        { name: 'amount', type: 'uint256', required: true, description: 'Amount to stake' },
-      ],
-    },
-    {
-      id: 'lp',
-      name: 'Provide Liquidity',
-      type: 'LP',
-      adapter: 'any',
-      description: 'Provide liquidity to a pool',
-      parameters: [
-        { name: 'tokenA', type: 'address', required: true, description: 'First token' },
-        { name: 'tokenB', type: 'address', required: true, description: 'Second token' },
-        { name: 'amountA', type: 'uint256', required: true, description: 'Amount of first token' },
-        { name: 'amountB', type: 'uint256', required: true, description: 'Amount of second token' },
-      ],
-    },
-    {
-      id: 'harvest',
-      name: 'Harvest Rewards',
-      type: 'HARVEST',
-      adapter: 'any',
-      description: 'Claim accumulated rewards',
-      parameters: [
-        { name: 'pool', type: 'address', required: true, description: 'Pool address' },
-      ],
-    },
-    {
-      id: 'flash-loan',
-      name: 'Flash Loan',
-      type: 'FLASH_LOAN',
-      adapter: 'aave-v3',
-      description: 'Execute a flash loan',
-      parameters: [
-        { name: 'asset', type: 'address', required: true, description: 'Token to borrow' },
-        { name: 'amount', type: 'uint256', required: true, description: 'Amount to borrow' },
-        { name: 'calldata', type: 'bytes', required: true, description: 'Actions to execute' },
-      ],
     },
   ];
 }

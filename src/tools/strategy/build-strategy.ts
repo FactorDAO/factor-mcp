@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isAddress, type Address, keccak256, toHex } from 'viem';
 import { configManager } from '../../config/index.js';
-import { getVaultInfo, getKnownAdapters, getKnownBuildingBlocks } from '../../sdk/client.js';
+import { getVaultInfo, getKnownAdapters } from '../../sdk/client.js';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import type { StrategyStep, BuiltStrategy } from '../../sdk/types.js';
 
@@ -68,11 +68,9 @@ export const buildStrategyTool = {
     const vaultAddress = validated.vaultAddress as Address;
     const vaultInfo = await getVaultInfo(vaultAddress);
 
-    // Validate adapters and actions
+    // Validate adapters
     const adapters = getKnownAdapters();
-    const blocks = getKnownBuildingBlocks();
     const adapterIds = new Set(adapters.map(a => a.id));
-    const actionTypes = new Set(blocks.map(b => b.type));
 
     const validationErrors: string[] = [];
 
@@ -81,10 +79,6 @@ export const buildStrategyTool = {
 
       if (!adapterIds.has(step.adapter)) {
         validationErrors.push(`Step ${i + 1}: Unknown adapter "${step.adapter}"`);
-      }
-
-      if (!actionTypes.has(step.action as any)) {
-        validationErrors.push(`Step ${i + 1}: Unknown action "${step.action}"`);
       }
 
       // Validate adapter supports the action

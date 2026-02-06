@@ -52,14 +52,14 @@ export const getVaultInfoTool = {
       const proVault = new StudioProVault({
         chainId,
         vaultAddress,
-        environment: 'production',
+        environment: configManager.getEnvironment(),
         jsonRpcUrl: configManager.getRpcUrl(),
       });
 
       const proVaultStats = new StudioProVaultStats({
         chainId,
         vaultAddress,
-        environment: 'production',
+        environment: configManager.getEnvironment(),
         jsonRpcUrl: configManager.getRpcUrl(),
       });
 

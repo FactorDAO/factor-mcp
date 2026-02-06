@@ -3,6 +3,7 @@ import { setChainTool } from './config/set-chain.js';
 import { setRpcTool } from './config/set-rpc.js';
 import { getConfigTool } from './config/get-config.js';
 import { walletSetupTool } from './config/wallet-setup.js';
+import { getAddressBookTool } from './config/get-address-book.js';
 
 // Vault tools
 import { getVaultInfoTool } from './vault/get-vault-info.js';
@@ -19,9 +20,18 @@ import { getFactoryAddressesTool } from './vault/get-factory-addresses.js';
 import { validateVaultConfigTool } from './vault/validate-vault-config.js';
 import { addAdapterTool } from './vault/add-adapter.js';
 
+// Tokenlist tools
+import { getLendingTokensTool } from './tokenlist/get-lending-tokens.js';
+import { addVaultTokenTool } from './tokenlist/add-vault-token.js';
+
+// Lending tools
+import { lendSupplyTool } from './lending/lend-supply.js';
+import { lendWithdrawTool } from './lending/lend-withdraw.js';
+import { lendBorrowTool } from './lending/lend-borrow.js';
+import { lendRepayTool } from './lending/lend-repay.js';
+
 // Strategy tools
 import { listAdaptersTool } from './strategy/list-adapters.js';
-import { listBuildingBlocksTool } from './strategy/list-building-blocks.js';
 import { buildStrategyTool } from './strategy/build-strategy.js';
 import { simulateStrategyTool } from './strategy/simulate-strategy.js';
 import { executeStrategyTool } from './strategy/execute-strategy.js';
@@ -42,6 +52,7 @@ export {
   setRpcTool,
   getConfigTool,
   walletSetupTool,
+  getAddressBookTool,
   getVaultInfoTool,
   previewDepositTool,
   previewWithdrawTool,
@@ -55,8 +66,13 @@ export {
   getFactoryAddressesTool,
   validateVaultConfigTool,
   addAdapterTool,
+  getLendingTokensTool,
+  addVaultTokenTool,
+  lendSupplyTool,
+  lendWithdrawTool,
+  lendBorrowTool,
+  lendRepayTool,
   listAdaptersTool,
-  listBuildingBlocksTool,
   buildStrategyTool,
   simulateStrategyTool,
   executeStrategyTool,
@@ -70,11 +86,12 @@ export {
 
 // Tool registry
 export const allTools = [
-  // Configuration (4)
+  // Configuration (5)
   setChainTool,
   setRpcTool,
   getConfigTool,
   walletSetupTool,
+  getAddressBookTool,
 
   // Vault (13)
   getOwnedVaultsTool,
@@ -91,9 +108,18 @@ export const allTools = [
   validateVaultConfigTool,
   addAdapterTool,
 
-  // Strategy (5)
+  // Tokenlist (2)
+  getLendingTokensTool,
+  addVaultTokenTool,
+
+  // Lending (4)
+  lendSupplyTool,
+  lendWithdrawTool,
+  lendBorrowTool,
+  lendRepayTool,
+
+  // Strategy (4)
   listAdaptersTool,
-  listBuildingBlocksTool,
   buildStrategyTool,
   simulateStrategyTool,
   executeStrategyTool,
@@ -114,6 +140,7 @@ export type ToolName =
   | 'factor_set_rpc'
   | 'factor_get_config'
   | 'factor_wallet_setup'
+  | 'factor_get_address_book'
   | 'factor_get_owned_vaults'
   | 'factor_get_vault_info'
   | 'factor_get_shares'
@@ -127,8 +154,13 @@ export type ToolName =
   | 'factor_get_factory_addresses'
   | 'factor_validate_vault_config'
   | 'factor_add_adapter'
+  | 'factor_get_lending_tokens'
+  | 'factor_add_vault_token'
+  | 'factor_lend_supply'
+  | 'factor_lend_withdraw'
+  | 'factor_lend_borrow'
+  | 'factor_lend_repay'
   | 'factor_list_adapters'
-  | 'factor_list_building_blocks'
   | 'factor_build_strategy'
   | 'factor_simulate_strategy'
   | 'factor_execute_strategy'

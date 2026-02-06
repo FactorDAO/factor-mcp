@@ -46,21 +46,6 @@ export interface AdapterInfo {
   description: string;
 }
 
-export interface BuildingBlockInfo {
-  id: string;
-  name: string;
-  type: 'LEND' | 'BORROW' | 'SWAP' | 'STAKE' | 'LP' | 'HARVEST' | 'FLASH_LOAN';
-  adapter: string;
-  description: string;
-  parameters: ParameterSchema[];
-}
-
-export interface ParameterSchema {
-  name: string;
-  type: 'address' | 'uint256' | 'bytes' | 'bool' | 'string';
-  required: boolean;
-  description: string;
-}
 
 export interface StrategyStep {
   adapter: string;

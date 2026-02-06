@@ -21,6 +21,13 @@ Factor Protocol is a DeFi infrastructure that allows users to create and manage 
 
 ---
 
+## Architecture Rules
+
+- **All vault interactions go through `executeByManager`**: Every on-chain operation on a vault (lending, swapping, adding adapters, etc.) is executed via the `proVault.executeByManager([blocks])` pattern. The SDK's `StrategyBuilder` generates the encoded blocks, and `StudioProVault.executeByManager()` wraps them in a manager call.
+- **Adding adapters uses `AdapterManagementAdapter`**: To add a new protocol adapter to a vault, the `factor_add_adapter` tool calls `strategyBuilder.adapter.adapterManagement.addAdapter(adapterAddress)` and executes it via `proVault.executeByManager([block])`. The adapter must be whitelisted in the factory (`factor_get_factory_addresses`).
+
+---
+
 ## Quick Start
 
 ### 1. Check Configuration
@@ -116,6 +123,64 @@ Import or generate a wallet for signing transactions.
 - Always use a password for production wallets
 - Wallets are stored at `~/.factor-mcp/wallets/`
 - Never share private keys or wallet files
+
+---
+
+#### `factor_get_address_book`
+Get the SDK address book (Pro adapters only) for the current chain and environment. Returns all known Pro contract addresses including adapters, accounting adapters, factory, and protocol addresses.
+
+**Parameters:** None
+
+**Response includes:**
+- `chain`: Current chain
+- `environment`: Current environment (production/testing)
+- `addresses`: Map of address name to address value (only Pro addresses)
+- `total`: Number of addresses returned
+
+**Use this to:**
+- Find the correct adapter address before adding it to a vault
+- Look up accounting adapter addresses
+- Find factory and protocol addresses
+
+---
+
+### Tokenlist Tools
+
+#### `factor_get_lending_tokens`
+Look up lending token information from the tokenlist for a specific protocol. Returns aTokens, debt tokens, and underlying asset info. **Use this BEFORE supplying to a lending protocol** to know which tokens the vault needs.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| protocol | string | Yes | `"aave"`, `"compoundV3"`, or `"morpho"` |
+| underlyingAsset | string | No | Underlying token address (e.g., USDC). If omitted, returns all tokens for the protocol. |
+
+**Response includes (Aave example):**
+- `aToken`: Interest-bearing token address (register as vault asset)
+- `variableDebtToken`: Debt token address (register as vault debt if borrowing)
+- `underlyingAddress`: The underlying asset address
+- `underlyingSymbol`: Symbol (e.g., "USDC")
+- `buildingBlocks`: Supported operations (LEND, BORROW, REPAY, WITHDRAW, FLASHLOAN)
+- `vaultSetupNotes`: Step-by-step guidance for vault configuration
+
+---
+
+#### `factor_add_vault_token`
+Add an asset or debt token to a vault using the AssetDebtAdapter via executeByManager. **Use this to register aTokens, debt tokens, or any other token the vault needs to track.**
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| vaultAddress | string | Yes | The vault contract address |
+| tokenAddress | string | Yes | Token to add (e.g., aToken for assets, variableDebtToken for debts) |
+| accountingAddress | string | Yes | Accounting adapter address (must be whitelisted in factory) |
+| type | string | Yes | `"asset"` or `"debt"` |
+| password | string | No | Wallet password if encrypted |
+
+**How to find the correct accounting address:**
+1. Call `factor_get_factory_addresses`
+2. Look in the `assets` array for the token address to find its accounting pair
+3. For debts, look in the `debts` array
 
 ---
 
@@ -395,13 +460,104 @@ Check if a transaction has been mined and its status.
 
 ---
 
+### Lending Tools
+
+#### `factor_lend_supply`
+Supply/deposit assets to a lending protocol through a Factor vault.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| vaultAddress | string | Yes | The vault contract address |
+| protocol | string | Yes | "aave", "compoundV3", or "morpho" |
+| assetAddress | string | Conditional | Token to supply (required for aave, compoundV3) |
+| marketAddress | string | Conditional | Compound V3 market address (required for compoundV3) |
+| marketId | string | Conditional | Morpho market ID (required for morpho) |
+| amount | string | Yes | Amount in wei, or "all" for entire balance |
+| password | string | No | Wallet password |
+
+**Examples:**
+```json
+// Aave: supply USDC
+{
+  "vaultAddress": "0xVAULT",
+  "protocol": "aave",
+  "assetAddress": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "amount": "1000000"
+}
+
+// Compound V3: supply all USDC
+{
+  "vaultAddress": "0xVAULT",
+  "protocol": "compoundV3",
+  "marketAddress": "0xMARKET",
+  "assetAddress": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "amount": "all"
+}
+
+// Morpho: supply to a market
+{
+  "vaultAddress": "0xVAULT",
+  "protocol": "morpho",
+  "marketId": "0xMARKETID...",
+  "amount": "1000000"
+}
+```
+
+---
+
+#### `factor_lend_withdraw`
+Withdraw supplied assets from a lending protocol through a Factor vault.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| vaultAddress | string | Yes | The vault contract address |
+| protocol | string | Yes | "aave", "compoundV3", or "morpho" |
+| assetAddress | string | Conditional | Token to withdraw (required for aave, compoundV3) |
+| marketAddress | string | Conditional | Compound V3 market address (required for compoundV3) |
+| marketId | string | Conditional | Morpho market ID (required for morpho) |
+| amount | string | Yes | Amount in wei, or "all" for entire supplied balance |
+| password | string | No | Wallet password |
+
+---
+
+#### `factor_lend_borrow`
+Borrow assets from a lending protocol through a Factor vault. Requires collateral to be supplied first.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| vaultAddress | string | Yes | The vault contract address |
+| protocol | string | Yes | "aave", "compoundV3", or "morpho" |
+| debtAddress | string | Conditional | Token to borrow (required for aave, compoundV3) |
+| marketAddress | string | Conditional | Compound V3 market address (required for compoundV3) |
+| marketId | string | Conditional | Morpho market ID (required for morpho) |
+| amount | string | Yes | Amount to borrow in wei |
+| password | string | No | Wallet password |
+
+---
+
+#### `factor_lend_repay`
+Repay borrowed assets to a lending protocol through a Factor vault.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| vaultAddress | string | Yes | The vault contract address |
+| protocol | string | Yes | "aave", "compoundV3", or "morpho" |
+| debtAddress | string | Conditional | Token of the debt to repay (required for aave, compoundV3) |
+| marketAddress | string | Conditional | Compound V3 market address (required for compoundV3) |
+| marketId | string | Conditional | Morpho market ID (required for morpho) |
+| amount | string | Yes | Amount in wei, or "all" for entire debt |
+| password | string | No | Wallet password |
+
+---
+
 ### Strategy Building Tools
 
 #### `factor_list_adapters`
 List available protocol adapters for the current chain.
-
-#### `factor_list_building_blocks`
-List available strategy building blocks (actions).
 
 #### `factor_build_strategy`
 Build a multi-step strategy from building blocks.
@@ -484,7 +640,179 @@ Execute a built strategy on-chain.
    }
 ```
 
-### Workflow 4: Create a New Vault
+### Workflow 4: Prepare Vault + Supply to Aave (Complete Flow)
+
+Before lending, the vault must have the Aave adapter, the aToken registered as an asset, and optionally the debt token for borrowing.
+
+```
+Step 1: Look up Aave token info for USDC
+   factor_get_lending_tokens {
+     protocol: "aave",
+     underlyingAsset: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"  // USDC
+   }
+   → Returns: aToken, variableDebtToken, underlyingSymbol, buildingBlocks
+
+Step 2: Get the Aave adapter and accounting addresses
+   factor_get_address_book
+   → Find: factor_aave_adapter_pro, factor_aave_accounting_adapter_pro
+
+Step 3: Check current vault state
+   factor_get_vault_info { vaultAddress: "0xVAULT" }
+   → Check: Is Aave adapter in adapters.manager? Is aToken in assets?
+
+Step 4: Add Aave adapter (if not already present)
+   factor_add_adapter {
+     vaultAddress: "0xVAULT",
+     adapterAddress: "<factor_aave_adapter_pro from step 2>"
+   }
+
+Step 5: Find accounting for the aToken
+   factor_get_factory_addresses
+   → Look in assets[] for the aToken address from step 1 → get its accounting address
+
+Step 6: Register the aToken as a vault asset
+   factor_add_vault_token {
+     vaultAddress: "0xVAULT",
+     tokenAddress: "<aToken from step 1>",
+     accountingAddress: "<accounting from step 5>",
+     type: "asset"
+   }
+
+Step 7: (If borrowing) Register the debt token
+   factor_add_vault_token {
+     vaultAddress: "0xVAULT",
+     tokenAddress: "<variableDebtToken from step 1>",
+     accountingAddress: "<debt accounting from factory debts[]>",
+     type: "debt"
+   }
+
+Step 8: Supply to Aave
+   factor_lend_supply {
+     vaultAddress: "0xVAULT",
+     protocol: "aave",
+     assetAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+     amount: "all"
+   }
+```
+
+### Workflow 5: Aave Leverage (Borrow + Repay + Withdraw)
+
+Assumes vault is already set up with Aave adapter + aToken + debtToken (see Workflow 4).
+
+```
+1. factor_lend_supply {
+     vaultAddress: "0xVAULT",
+     protocol: "aave",
+     assetAddress: "0xUSDC...",
+     amount: "1000000000"  // 1000 USDC as collateral
+   }
+
+2. factor_lend_borrow {
+     vaultAddress: "0xVAULT",
+     protocol: "aave",
+     debtAddress: "0xWETH...",
+     amount: "500000000000000000"  // 0.5 WETH
+   }
+
+3. factor_lend_repay {
+     vaultAddress: "0xVAULT",
+     protocol: "aave",
+     debtAddress: "0xWETH...",
+     amount: "all"  // repay full debt
+   }
+
+4. factor_lend_withdraw {
+     vaultAddress: "0xVAULT",
+     protocol: "aave",
+     assetAddress: "0xUSDC...",
+     amount: "all"  // withdraw all collateral
+   }
+```
+
+### Workflow 6: Prepare Vault + Supply to Compound V3
+
+Compound V3 requires TWO adapters (`factor_compound_v3_adapter_pro` + `factor_compound_v3_market_adapter_pro`) and a market registration step.
+
+```
+Step 1: Look up Compound V3 token info
+   factor_get_lending_tokens { protocol: "compoundV3", underlyingAsset: "0xUSDC..." }
+   → Returns baseAssetAddress (cToken/market), underlyingAddress
+
+Step 2: Get adapter addresses
+   factor_get_address_book
+   → Find: factor_compound_v3_adapter_pro, factor_compound_v3_market_adapter_pro
+
+Step 3: Add BOTH adapters (if missing)
+   factor_add_adapter { vaultAddress: "0xVAULT", adapterAddress: "<compound_v3_adapter_pro>" }
+   factor_add_adapter { vaultAddress: "0xVAULT", adapterAddress: "<compound_v3_market_adapter_pro>" }
+
+Step 4: Add cToken as vault asset
+   factor_add_vault_token {
+     vaultAddress: "0xVAULT",
+     tokenAddress: "<cToken from step 1>",
+     accountingAddress: "<from factory assets[]>",
+     type: "asset"
+   }
+
+Step 5: Register the market (REQUIRED before supply)
+   factor_execute_manager {
+     vaultAddress: "0xVAULT",
+     steps: [{
+       protocol: "compoundV3",
+       action: "addMarketToAsset",
+       params: { marketAddress: "<cToken>", assetAddress: "<underlying>" }
+     }],
+     password: "..."
+   }
+
+Step 6: Supply
+   factor_lend_supply {
+     vaultAddress: "0xVAULT",
+     protocol: "compoundV3",
+     marketAddress: "<cToken>",
+     assetAddress: "0xUSDC...",
+     amount: "all"
+   }
+```
+
+### Workflow 7: Prepare Vault + Supply to Morpho
+
+Morpho requires a market registration step via `addMarketToAssetAndDebt`.
+
+```
+Step 1: Look up Morpho markets
+   factor_get_lending_tokens { protocol: "morpho" }
+   → Returns marketId, loanToken, collateralToken for each market
+
+Step 2: Get adapter addresses
+   factor_get_address_book
+   → Find: Morpho adapter address
+
+Step 3: Add Morpho adapter (if missing)
+   factor_add_adapter { vaultAddress: "0xVAULT", adapterAddress: "<morpho_adapter_pro>" }
+
+Step 4: Register the market (REQUIRED before supply)
+   factor_execute_manager {
+     vaultAddress: "0xVAULT",
+     steps: [{
+       protocol: "morpho",
+       action: "addMarketToAssetAndDebt",
+       params: { marketId: "<MARKET_ID>" }
+     }],
+     password: "..."
+   }
+   → This registers both the asset and debt tokens for the Morpho market in one call
+
+Step 5: Supply
+   factor_lend_supply {
+     vaultAddress: "0xVAULT",
+     protocol: "morpho",
+     marketId: "<MARKET_ID>",
+     amount: "all"
+   }
+```
+
+### Workflow 8: Create a New Vault
 
 ```
 1. factor_get_config
