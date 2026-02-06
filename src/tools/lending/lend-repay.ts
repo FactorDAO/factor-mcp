@@ -63,7 +63,7 @@ export const lendRepayTool = {
       },
       amount: {
         type: 'string',
-        description: 'Amount to repay in base units (wei), or "all" to repay the entire debt',
+        description: 'Amount to repay in base units (wei), or "all" to repay the entire debt, or a percentage like "50%" to repay that percentage of the debt',
       },
       password: {
         type: 'string',
@@ -100,6 +100,13 @@ export const lendRepayTool = {
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
     const isAll = validated.amount.toLowerCase() === 'all';
+    const percentageMatch = validated.amount.match(/^(\d+(?:\.\d+)?)%$/);
+    const isPercentage = !!percentageMatch;
+    const percentage = isPercentage ? parseFloat(percentageMatch![1]) : 0;
+
+    if (isPercentage && (percentage <= 0 || percentage > 100)) {
+      throw new VaultError('Percentage must be between 0 and 100');
+    }
 
     try {
       const proVault = new StudioProVault({
@@ -121,16 +128,22 @@ export const lendRepayTool = {
         case 'aave':
           block = isAll
             ? (strategyBuilder.adapter as any).aave.repayAll({ debtAddress: validated.debtAddress })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).aave.repayByPercentage({ debtAddress: validated.debtAddress, percentage })
             : (strategyBuilder.adapter as any).aave.repayBN({ debtAddress: validated.debtAddress, amountBN: validated.amount });
           break;
         case 'compoundV3':
           block = isAll
             ? (strategyBuilder.adapter as any).compoundV3.repayAll({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).compoundV3.repayByPercentage({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress, percentage })
             : (strategyBuilder.adapter as any).compoundV3.repayBN({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress, amountBN: validated.amount });
           break;
         case 'morpho':
           block = isAll
             ? (strategyBuilder.adapter as any).morpho.repayAll({ marketId: validated.marketId })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).morpho.repayByPercentage({ marketId: validated.marketId, percentage })
             : (strategyBuilder.adapter as any).morpho.repayBN({ marketId: validated.marketId, amountBN: validated.amount });
           break;
       }

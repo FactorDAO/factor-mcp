@@ -166,28 +166,72 @@ Compound V3 requires TWO adapters and a market registration step before supply.
 ```
 
 ### Prepare Vault for Morpho Lending (Full Setup)
-Morpho requires a market registration step before supply.
+Morpho requires: (1) Morpho adapter + market adapter, (2) BOTH collateral AND loan tokens registered as vault assets with **Chainlink accounting**, (3) market registered via `addMarketToAssetAndDebt`. All of this MUST be done BEFORE any supply/withdraw/borrow/repay.
+
+**IMPORTANT - Market Selection**: NEVER pick a Morpho market automatically. Always:
+1. Present available markets to the user (from `factor_get_lending_tokens`)
+2. Provide the Morpho interface link for the relevant chain so the user can review:
+   - Base: https://app.morpho.org/?network=base
+   - Ethereum: https://app.morpho.org/?network=mainnet
+   - Arbitrum: https://app.morpho.org/?network=arbitrum
+3. Wait for the user to confirm which market they want before proceeding
+4. Run ALL pre-flight checks (step 5 below) before any on-chain action
+
 ```
-1. factor_get_lending_tokens with protocol: "morpho"
+1. factor_get_lending_tokens with protocol: "morpho", underlyingAsset: "<TOKEN_ADDRESS>"
    → Returns marketId, loanToken, collateralToken for each market
+   → Present the list to the user with market details and link to Morpho interface
+   → WAIT for user to choose a market before continuing
+
 2. factor_get_address_book
-   → Find factor_morpho_adapter_pro (and market adapter if applicable)
-3. factor_add_adapter for the Morpho adapter (if missing)
-4. factor_execute_manager to register the market:
-   → steps: [{ protocol: "morpho", action: "addMarketToAssetAndDebt", params: { marketId: "<MARKET_ID>" }}]
-   → This registers both asset and debt for the Morpho market in one call
-5. factor_lend_supply with protocol: "morpho", marketId: "<MARKET_ID>", amount (or "all")
+   → Find factor_morpho_adapter_pro, factor_morpho_market_adapter_pro, factor_chainlink_accounting_adapter_pro
+
+3. Pre-flight checks - verify ALL tokens are supported BEFORE any on-chain action:
+   a. Chainlink price feed check: for EACH token (collateral + loan), call:
+      factor_cast_call with to: <chainlink_accounting_adapter>, signature: "getPriceDetails(address)((uint256,uint8,uint8))", args: ["<token_address>"]
+      → If it returns price data, the token has a Chainlink feed
+      → If it reverts with ACC_CHAINLINK__OracleNotFound(), there is NO feed - STOP and inform the user
+   b. Factory whitelist check:
+      factor_get_factory_addresses → verify each token + chainlink accounting pair exists in the assets list
+      → If a token is NOT in the factory whitelist - STOP and inform the user
+   c. Only proceed if ALL tokens pass both checks
+
+4. factor_add_adapter for factor_morpho_adapter_pro (if missing)
+5. factor_add_adapter for factor_morpho_market_adapter_pro (if missing)
+   → BOTH adapters are required
+
+6. Register BOTH collateral and loan tokens as vault assets (if not already):
+   factor_add_vault_token with type: "asset", tokenAddress: <collateralToken>, accountingAddress: <chainlink_accounting>
+   factor_add_vault_token with type: "asset", tokenAddress: <loanToken>, accountingAddress: <chainlink_accounting>
+   → Both tokens MUST be vault assets before addMarketToAssetAndDebt will work
+   → Always verify tx success with factor_get_transaction_status
+
+7. Register the market (REQUIRED before any supply/withdraw/borrow/repay):
+   factor_execute_manager with steps: [{ protocol: "morpho", action: "addMarketToAssetAndDebt", params: { marketId: "<MARKET_ID>" }}]
+   → This registers the Morpho market in the vault
+   → Verify tx success - if it reverts with INVALID_ASSET, a token from step 6 is missing
+
+8. factor_lend_supply with protocol: "morpho", marketId: "<MARKET_ID>", amount (or "all")
 ```
+**IMPORTANT**:
+- `addMarketToAssetAndDebt` validates that BOTH the collateral token AND the loan token are already registered as vault assets. If either is missing, the call will revert with `INVALID_ASSET`.
+- NEVER supply to a Morpho market without completing step 7 (`addMarketToAssetAndDebt`) first. Without market registration, supply may partially work but withdraw will be impossible, locking funds.
+- Always verify every transaction succeeded before proceeding to the next step.
 
 ### Lending Quick Reference
 Once the vault is set up (adapter + tokens + market registered), use these tools directly:
 ```
-Supply to Aave:     factor_lend_supply with protocol: "aave", assetAddress, amount (or "all")
-Supply to Compound: factor_lend_supply with protocol: "compoundV3", marketAddress, assetAddress, amount (or "all")
-Supply to Morpho:   factor_lend_supply with protocol: "morpho", marketId, amount (or "all")
+Supply to Aave:     factor_lend_supply with protocol: "aave", assetAddress, amount
+Supply to Compound: factor_lend_supply with protocol: "compoundV3", marketAddress, assetAddress, amount
+Supply to Morpho:   factor_lend_supply with protocol: "morpho", marketId, amount
 
 Withdraw, borrow, and repay follow the same pattern with factor_lend_withdraw, factor_lend_borrow, factor_lend_repay.
 ```
+
+**Amount format** (for supply, withdraw, and repay):
+- Specific amount in base units (wei): `"1000000"` (1 USDC)
+- Entire balance: `"all"`
+- Percentage of balance: `"50%"`, `"25.5%"`, etc. (0-100%)
 
 ### Lending Workflow Example (Aave Leverage)
 ```

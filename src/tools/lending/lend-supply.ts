@@ -63,7 +63,7 @@ export const lendSupplyTool = {
       },
       amount: {
         type: 'string',
-        description: 'Amount in base units (wei), or "all" to supply the entire vault balance',
+        description: 'Amount in base units (wei), or "all" to supply the entire vault balance, or a percentage like "50%" to supply that percentage of the balance',
       },
       password: {
         type: 'string',
@@ -101,6 +101,13 @@ export const lendSupplyTool = {
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
     const isAll = validated.amount.toLowerCase() === 'all';
+    const percentageMatch = validated.amount.match(/^(\d+(?:\.\d+)?)%$/);
+    const isPercentage = !!percentageMatch;
+    const percentage = isPercentage ? parseFloat(percentageMatch![1]) : 0;
+
+    if (isPercentage && (percentage <= 0 || percentage > 100)) {
+      throw new VaultError('Percentage must be between 0 and 100');
+    }
 
     try {
       const proVault = new StudioProVault({
@@ -122,16 +129,22 @@ export const lendSupplyTool = {
         case 'aave':
           block = isAll
             ? (strategyBuilder.adapter as any).aave.supplyAll({ assetAddress: validated.assetAddress })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).aave.supplyByPercentage({ assetAddress: validated.assetAddress, percentage })
             : (strategyBuilder.adapter as any).aave.supplyBN({ assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
         case 'compoundV3':
           block = isAll
             ? (strategyBuilder.adapter as any).compoundV3.supplyAll({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).compoundV3.supplyByPercentage({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, percentage })
             : (strategyBuilder.adapter as any).compoundV3.supplyBN({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
         case 'morpho':
           block = isAll
             ? (strategyBuilder.adapter as any).morpho.supplyAll({ marketId: validated.marketId })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).morpho.supplyByPercentage({ marketId: validated.marketId, percentage })
             : (strategyBuilder.adapter as any).morpho.supplyBN({ marketId: validated.marketId, amountBN: validated.amount });
           break;
       }

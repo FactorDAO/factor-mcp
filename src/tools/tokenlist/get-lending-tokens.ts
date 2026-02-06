@@ -160,8 +160,8 @@ export const getLendingTokensTool = {
         if (validated.underlyingAsset) {
           filtered = allTokens.filter(
             (t: any) =>
-              t.loanToken?.toLowerCase() === validated.underlyingAsset!.toLowerCase() ||
-              t.collateralToken?.toLowerCase() === validated.underlyingAsset!.toLowerCase()
+              t.loanAsset?.address?.toLowerCase() === validated.underlyingAsset!.toLowerCase() ||
+              t.collateralAsset?.address?.toLowerCase() === validated.underlyingAsset!.toLowerCase()
           );
         }
 
@@ -170,11 +170,14 @@ export const getLendingTokensTool = {
           protocol: 'morpho',
           chain,
           tokens: filtered.map((t: any) => ({
-            marketId: t.marketId,
-            loanToken: t.loanToken,
-            collateralToken: t.collateralToken,
-            symbol: t.symbol,
-            decimals: t.decimals,
+            marketId: t.id,
+            name: t.name,
+            loanToken: t.loanAsset?.address,
+            loanSymbol: t.loanAsset?.symbol,
+            loanDecimals: t.loanAsset?.decimals,
+            collateralToken: t.collateralAsset?.address,
+            collateralSymbol: t.collateralAsset?.symbol,
+            collateralDecimals: t.collateralAsset?.decimals,
             buildingBlocks: t.buildingBlocks,
           })),
           total: filtered.length,

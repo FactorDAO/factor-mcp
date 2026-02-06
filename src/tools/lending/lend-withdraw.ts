@@ -63,7 +63,7 @@ export const lendWithdrawTool = {
       },
       amount: {
         type: 'string',
-        description: 'Amount in base units (wei), or "all" to withdraw the entire supplied balance',
+        description: 'Amount in base units (wei), or "all" to withdraw the entire supplied balance, or a percentage like "50%" to withdraw that percentage of the supplied balance',
       },
       password: {
         type: 'string',
@@ -100,6 +100,13 @@ export const lendWithdrawTool = {
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
     const isAll = validated.amount.toLowerCase() === 'all';
+    const percentageMatch = validated.amount.match(/^(\d+(?:\.\d+)?)%$/);
+    const isPercentage = !!percentageMatch;
+    const percentage = isPercentage ? parseFloat(percentageMatch![1]) : 0;
+
+    if (isPercentage && (percentage <= 0 || percentage > 100)) {
+      throw new VaultError('Percentage must be between 0 and 100');
+    }
 
     try {
       const proVault = new StudioProVault({
@@ -121,16 +128,22 @@ export const lendWithdrawTool = {
         case 'aave':
           block = isAll
             ? (strategyBuilder.adapter as any).aave.withdrawAll({ assetAddress: validated.assetAddress })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).aave.withdrawByPercentage({ assetAddress: validated.assetAddress, percentage })
             : (strategyBuilder.adapter as any).aave.withdrawBN({ assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
         case 'compoundV3':
           block = isAll
             ? (strategyBuilder.adapter as any).compoundV3.withdrawAll({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).compoundV3.withdrawByPercentage({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, percentage })
             : (strategyBuilder.adapter as any).compoundV3.withdrawBN({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
         case 'morpho':
           block = isAll
             ? (strategyBuilder.adapter as any).morpho.withdrawAll({ marketId: validated.marketId })
+            : isPercentage
+            ? (strategyBuilder.adapter as any).morpho.withdrawByPercentage({ marketId: validated.marketId, percentage })
             : (strategyBuilder.adapter as any).morpho.withdrawBN({ marketId: validated.marketId, amountBN: validated.amount });
           break;
       }
