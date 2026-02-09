@@ -37,7 +37,6 @@ async function startAnvilFork(rpcUrl: string): Promise<number> {
     anvilProcess = spawn('anvil', [
       '--fork-url', rpcUrl,
       '--port', anvilPort.toString(),
-      '--silent',
     ], {
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],

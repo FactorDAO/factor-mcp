@@ -1,25 +1,21 @@
 import { z } from 'zod';
 import { isAddress, type Address } from 'viem';
 import { configManager } from '../../config/index.js';
-import { getWalletAddress } from '../../wallet/key-manager.js';
 import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 
-const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho', 'siloV2']);
-
-export const lendBorrowSchema = z.object({
+export const swapOpenOceanSchema = z.object({
   vaultAddress: z.string(),
-  protocol: protocolEnum,
-  debtAddress: z.string().optional(),
-  marketAddress: z.string().optional(),
-  marketId: z.string().optional(),
+  tokenIn: z.string(),
+  tokenOut: z.string(),
   amount: z.string(),
+  openOceanSwapData: z.string(),
   password: z.string().optional(),
 });
 
-export type LendBorrowInput = z.infer<typeof lendBorrowSchema>;
+export type SwapOpenOceanInput = z.infer<typeof swapOpenOceanSchema>;
 
 function getChainIdEnum(chain: string): ChainId {
   switch (chain) {
@@ -34,9 +30,9 @@ function getChainIdEnum(chain: string): ChainId {
   }
 }
 
-export const lendBorrowTool = {
-  name: 'factor_lend_borrow',
-  description: 'Borrow assets from a lending protocol (Aave, Compound V3, Morpho, or Silo V2) through a Factor vault. Requires collateral to be supplied first.',
+export const swapOpenOceanTool = {
+  name: 'factor_swap_openocean',
+  description: 'Swap tokens through OpenOcean DEX aggregator via a Factor vault. Requires openOceanSwapData from the OpenOcean API (get a quote first). Use amount "all" to swap entire vault balance.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -44,54 +40,40 @@ export const lendBorrowTool = {
         type: 'string',
         description: 'The vault contract address',
       },
-      protocol: {
+      tokenIn: {
         type: 'string',
-        enum: ['aave', 'compoundV3', 'morpho', 'siloV2'],
-        description: 'The lending protocol to borrow from',
+        description: 'Address of the input token',
       },
-      debtAddress: {
+      tokenOut: {
         type: 'string',
-        description: 'Token address to borrow (required for aave, compoundV3, siloV2)',
-      },
-      marketAddress: {
-        type: 'string',
-        description: 'Market address (required for compoundV3 and siloV2)',
-      },
-      marketId: {
-        type: 'string',
-        description: 'Morpho market ID (required for morpho)',
+        description: 'Address of the output token',
       },
       amount: {
         type: 'string',
-        description: 'Amount to borrow in base units (wei)',
+        description: 'Amount in base units (wei), or "all" to swap entire vault balance',
+      },
+      openOceanSwapData: {
+        type: 'string',
+        description: 'Swap data from OpenOcean API (hex encoded calldata)',
       },
       password: {
         type: 'string',
         description: 'Wallet password if encrypted',
       },
     },
-    required: ['vaultAddress', 'protocol', 'amount'],
+    required: ['vaultAddress', 'tokenIn', 'tokenOut', 'amount', 'openOceanSwapData'],
   },
-  handler: async (input: LendBorrowInput) => {
-    const validated = lendBorrowSchema.parse(input);
+  handler: async (input: SwapOpenOceanInput) => {
+    const validated = swapOpenOceanSchema.parse(input);
 
     if (!isAddress(validated.vaultAddress)) {
       throw new VaultError('Invalid vault address');
     }
-
-    if (validated.protocol === 'aave' && !validated.debtAddress) {
-      throw new VaultError('debtAddress is required for Aave');
+    if (!isAddress(validated.tokenIn)) {
+      throw new VaultError('Invalid tokenIn address');
     }
-    if (validated.protocol === 'compoundV3') {
-      if (!validated.marketAddress) throw new VaultError('marketAddress is required for Compound V3');
-      if (!validated.debtAddress) throw new VaultError('debtAddress is required for Compound V3');
-    }
-    if (validated.protocol === 'morpho' && !validated.marketId) {
-      throw new VaultError('marketId is required for Morpho');
-    }
-    if (validated.protocol === 'siloV2') {
-      if (!validated.debtAddress) throw new VaultError('debtAddress is required for Silo V2');
-      if (!validated.marketAddress) throw new VaultError('marketAddress is required for Silo V2');
+    if (!isAddress(validated.tokenOut)) {
+      throw new VaultError('Invalid tokenOut address');
     }
 
     const walletName = configManager.getWalletName();
@@ -103,6 +85,7 @@ export const lendBorrowTool = {
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
+    const isAll = validated.amount.toLowerCase() === 'all';
 
     try {
       const proVault = new StudioProVault({
@@ -120,19 +103,16 @@ export const lendBorrowTool = {
 
       let block: SendTransactionParams;
 
-      switch (validated.protocol) {
-        case 'aave':
-          block = (strategyBuilder.adapter as any).aave.borrowBN({ debtAddress: validated.debtAddress, amountBN: validated.amount });
-          break;
-        case 'compoundV3':
-          block = (strategyBuilder.adapter as any).compoundV3.borrowBN({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress, amountBN: validated.amount });
-          break;
-        case 'morpho':
-          block = (strategyBuilder.adapter as any).morpho.borrowBN({ marketId: validated.marketId, amountBN: validated.amount });
-          break;
-        case 'siloV2':
-          block = (strategyBuilder.adapter as any).siloV2.borrowBN({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress, amountBN: validated.amount });
-          break;
+      const swapParams = {
+        tokenIn: validated.tokenIn,
+        tokenOut: validated.tokenOut,
+        openOceanSwapData: validated.openOceanSwapData,
+      };
+
+      if (isAll) {
+        block = (strategyBuilder.adapter as any).openOcean.swapAll(swapParams);
+      } else {
+        block = (strategyBuilder.adapter as any).openOcean.swapBN({ ...swapParams, amountBN: validated.amount });
       }
 
       const executeData = proVault.executeByManager([block]);
@@ -148,9 +128,11 @@ export const lendBorrowTool = {
         return {
           success: true,
           simulationMode: true,
-          action: 'borrow',
-          protocol: validated.protocol,
+          action: 'swap',
+          protocol: 'openOcean',
           vaultAddress,
+          tokenIn: validated.tokenIn,
+          tokenOut: validated.tokenOut,
           amount: validated.amount,
           transaction: {
             to: executeData.to,
@@ -169,19 +151,21 @@ export const lendBorrowTool = {
       return {
         success: true,
         simulationMode: false,
-        action: 'borrow',
-        protocol: validated.protocol,
+        action: 'swap',
+        protocol: 'openOcean',
         vaultAddress,
+        tokenIn: validated.tokenIn,
+        tokenOut: validated.tokenOut,
         amount: validated.amount,
         transactionHash: result.hash,
         chain,
-        note: 'Borrow transaction submitted. Use factor_get_transaction_status to monitor progress.',
+        note: 'Swap transaction submitted. Use factor_get_transaction_status to monitor progress.',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError) {
         throw error;
       }
-      throw new SdkError('Failed to execute lending borrow', error);
+      throw new SdkError('Failed to execute OpenOcean swap', error);
     }
   },
 };

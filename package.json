@@ -1,6 +1,6 @@
 {
   "name": "@factordao/mcp-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server for Factor Protocol vault management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,7 +12,12 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/registration.test.ts tests/adapters.test.ts tests/schemas.test.ts tests/lending.test.ts",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "test:e2e": "vitest run tests/e2e-mcp.test.ts"
   },
   "keywords": [
     "mcp",
@@ -24,16 +29,17 @@
   "author": "Factor DAO",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "@factordao/sdk-studio": "pro-beta",
     "@factordao/sdk": "pro-beta",
+    "@factordao/sdk-studio": "pro-beta",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^1.10.14",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.2.2",
-    "ts-node": "^10.9.2"
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18.0.0"

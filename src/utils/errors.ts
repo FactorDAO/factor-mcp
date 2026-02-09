@@ -6,6 +6,17 @@ export class FactorMcpError extends Error {
   ) {
     super(message);
     this.name = 'FactorMcpError';
+
+    // Convert Error objects to plain objects so they serialize properly via JSON.stringify
+    if (details instanceof FactorMcpError) {
+      this.details = details.toJSON();
+    } else if (details instanceof Error) {
+      this.details = {
+        message: details.message,
+        name: details.name,
+        ...(details.stack ? { stack: details.stack } : {}),
+      };
+    }
   }
 
   toJSON() {

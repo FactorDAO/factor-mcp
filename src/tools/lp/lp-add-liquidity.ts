@@ -1,0 +1,169 @@
+import { z } from 'zod';
+import { isAddress, type Address } from 'viem';
+import { configManager } from '../../config/index.js';
+import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
+import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
+import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
+import { ChainId, SendTransactionParams } from '@factordao/sdk';
+
+const protocolEnum = z.enum(['uniswapV3', 'camelotV3', 'aerodrome']);
+
+export const lpAddLiquiditySchema = z.object({
+  vaultAddress: z.string(),
+  protocol: protocolEnum,
+  tokenId: z.string(),
+  amount0: z.string(),
+  amount1: z.string(),
+  password: z.string().optional(),
+});
+
+export type LpAddLiquidityInput = z.infer<typeof lpAddLiquiditySchema>;
+
+function getChainIdEnum(chain: string): ChainId {
+  switch (chain) {
+    case 'ARBITRUM_ONE':
+      return ChainId.ARBITRUM_ONE;
+    case 'BASE':
+      return ChainId.BASE;
+    case 'MAINNET':
+      return ChainId.MAINNET;
+    default:
+      return ChainId.ARBITRUM_ONE;
+  }
+}
+
+const adapterMap: Record<string, string> = {
+  uniswapV3: 'uniswapV3Lp',
+  camelotV3: 'camelotV3Lp',
+  aerodrome: 'aerodromeLp',
+};
+
+export const lpAddLiquidityTool = {
+  name: 'factor_lp_add_liquidity',
+  description: 'Add liquidity to an existing concentrated liquidity position through a Factor vault. Supports Uniswap V3, Camelot V3 (Arbitrum), and Aerodrome (Base).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      vaultAddress: {
+        type: 'string',
+        description: 'The vault contract address',
+      },
+      protocol: {
+        type: 'string',
+        enum: ['uniswapV3', 'camelotV3', 'aerodrome'],
+        description: 'The LP protocol to use',
+      },
+      tokenId: {
+        type: 'string',
+        description: 'The NFT token ID of the LP position',
+      },
+      amount0: {
+        type: 'string',
+        description: 'Amount of token0 to add in base units (wei)',
+      },
+      amount1: {
+        type: 'string',
+        description: 'Amount of token1 to add in base units (wei)',
+      },
+      password: {
+        type: 'string',
+        description: 'Wallet password if encrypted',
+      },
+    },
+    required: ['vaultAddress', 'protocol', 'tokenId', 'amount0', 'amount1'],
+  },
+  handler: async (input: LpAddLiquidityInput) => {
+    const validated = lpAddLiquiditySchema.parse(input);
+
+    if (!isAddress(validated.vaultAddress)) {
+      throw new VaultError('Invalid vault address');
+    }
+
+    const chain = configManager.getConfig().chain;
+    if (validated.protocol === 'camelotV3' && chain !== 'ARBITRUM_ONE') {
+      throw new VaultError('Camelot V3 is only available on Arbitrum');
+    }
+    if (validated.protocol === 'aerodrome' && chain !== 'BASE') {
+      throw new VaultError('Aerodrome is only available on Base');
+    }
+
+    const walletName = configManager.getWalletName();
+    if (!walletName) {
+      throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    }
+
+    const vaultAddress = validated.vaultAddress as Address;
+    const chainId = getChainIdEnum(chain);
+    const environment = configManager.getEnvironment();
+
+    try {
+      const proVault = new StudioProVault({
+        chainId,
+        vaultAddress,
+        environment,
+        jsonRpcUrl: configManager.getRpcUrl(),
+      });
+
+      const strategyBuilder = new StrategyBuilder({
+        chainId,
+        isProAdapter: true,
+        environment,
+      });
+
+      const adapterId = adapterMap[validated.protocol];
+      const block: SendTransactionParams = (strategyBuilder.adapter as any)[adapterId].addLiquidity({
+        tokenId: validated.tokenId,
+        amount0BN: validated.amount0,
+        amount1BN: validated.amount1,
+      });
+
+      const executeData = proVault.executeByManager([block]);
+
+      const txParams: TransactionParams = {
+        to: executeData.to as Address,
+        data: executeData.data as `0x${string}`,
+      };
+
+      if (configManager.isSimulationMode()) {
+        const gasEstimate = await estimateGas(txParams);
+
+        return {
+          success: true,
+          simulationMode: true,
+          action: 'addLiquidity',
+          protocol: validated.protocol,
+          vaultAddress,
+          tokenId: validated.tokenId,
+          transaction: {
+            to: executeData.to,
+            data: executeData.data,
+          },
+          gasEstimate: {
+            gasLimit: gasEstimate.gasLimit.toString(),
+            totalCostEth: gasEstimate.totalCostEth,
+          },
+          note: 'Simulation mode - transaction was not broadcast. Set SIMULATION_MODE=false to execute.',
+        };
+      }
+
+      const result = await sendTransaction(txParams, validated.password);
+
+      return {
+        success: true,
+        simulationMode: false,
+        action: 'addLiquidity',
+        protocol: validated.protocol,
+        vaultAddress,
+        tokenId: validated.tokenId,
+        transactionHash: result.hash,
+        chain,
+        note: 'Add liquidity transaction submitted. Use factor_get_transaction_status to monitor progress.',
+      };
+    } catch (error) {
+      if (error instanceof VaultError || error instanceof WalletError) {
+        throw error;
+      }
+      throw new SdkError('Failed to add liquidity', error);
+    }
+  },
+};

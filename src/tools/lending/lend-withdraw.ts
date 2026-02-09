@@ -7,7 +7,7 @@ import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 
-const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho']);
+const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho', 'siloV2']);
 
 export const lendWithdrawSchema = z.object({
   vaultAddress: z.string(),
@@ -15,6 +15,7 @@ export const lendWithdrawSchema = z.object({
   assetAddress: z.string().optional(),
   marketAddress: z.string().optional(),
   marketId: z.string().optional(),
+  collateral: z.boolean().optional(),
   amount: z.string(),
   password: z.string().optional(),
 });
@@ -36,7 +37,7 @@ function getChainIdEnum(chain: string): ChainId {
 
 export const lendWithdrawTool = {
   name: 'factor_lend_withdraw',
-  description: 'Withdraw supplied assets from a lending protocol (Aave, Compound V3, or Morpho) through a Factor vault. Use amount "all" to withdraw the entire supplied balance.',
+  description: 'Withdraw supplied assets from a lending protocol (Aave, Compound V3, Morpho, or Silo V2) through a Factor vault. Use amount "all" to withdraw the entire supplied balance. For Morpho, set collateral=true to withdraw collateral.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -46,12 +47,12 @@ export const lendWithdrawTool = {
       },
       protocol: {
         type: 'string',
-        enum: ['aave', 'compoundV3', 'morpho'],
+        enum: ['aave', 'compoundV3', 'morpho', 'siloV2'],
         description: 'The lending protocol to withdraw from',
       },
       assetAddress: {
         type: 'string',
-        description: 'Token address to withdraw (required for aave and compoundV3)',
+        description: 'Token address to withdraw (required for aave, compoundV3, siloV2)',
       },
       marketAddress: {
         type: 'string',
@@ -60,6 +61,10 @@ export const lendWithdrawTool = {
       marketId: {
         type: 'string',
         description: 'Morpho market ID (required for morpho)',
+      },
+      collateral: {
+        type: 'boolean',
+        description: 'For Morpho: withdraw collateral instead of supplied assets. Default: false',
       },
       amount: {
         type: 'string',
@@ -88,6 +93,10 @@ export const lendWithdrawTool = {
     }
     if (validated.protocol === 'morpho' && !validated.marketId) {
       throw new VaultError('marketId is required for Morpho');
+    }
+    if (validated.protocol === 'siloV2') {
+      if (!validated.assetAddress) throw new VaultError('assetAddress is required for Silo V2');
+      if (!validated.marketAddress) throw new VaultError('marketAddress is required for Silo V2');
     }
 
     const walletName = configManager.getWalletName();
@@ -140,11 +149,22 @@ export const lendWithdrawTool = {
             : (strategyBuilder.adapter as any).compoundV3.withdrawBN({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
         case 'morpho':
+          if (validated.collateral) {
+            block = isAll
+              ? (strategyBuilder.adapter as any).morpho.withdrawCollateral({ marketId: validated.marketId })
+              : (strategyBuilder.adapter as any).morpho.withdrawCollateralBN({ marketId: validated.marketId, amountBN: validated.amount });
+          } else {
+            block = isAll
+              ? (strategyBuilder.adapter as any).morpho.withdrawAll({ marketId: validated.marketId })
+              : isPercentage
+              ? (strategyBuilder.adapter as any).morpho.withdrawByPercentage({ marketId: validated.marketId, percentage })
+              : (strategyBuilder.adapter as any).morpho.withdrawBN({ marketId: validated.marketId, amountBN: validated.amount });
+          }
+          break;
+        case 'siloV2':
           block = isAll
-            ? (strategyBuilder.adapter as any).morpho.withdrawAll({ marketId: validated.marketId })
-            : isPercentage
-            ? (strategyBuilder.adapter as any).morpho.withdrawByPercentage({ marketId: validated.marketId, percentage })
-            : (strategyBuilder.adapter as any).morpho.withdrawBN({ marketId: validated.marketId, amountBN: validated.amount });
+            ? (strategyBuilder.adapter as any).siloV2.withdrawAll({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress })
+            : (strategyBuilder.adapter as any).siloV2.withdrawBN({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
       }
 

@@ -32,9 +32,25 @@ import { lendRepayTool } from './lending/lend-repay.js';
 
 // Strategy tools
 import { listAdaptersTool } from './strategy/list-adapters.js';
-import { buildStrategyTool } from './strategy/build-strategy.js';
-import { simulateStrategyTool } from './strategy/simulate-strategy.js';
-import { executeStrategyTool } from './strategy/execute-strategy.js';
+
+// Swap tools
+import { swapTool } from './swap/swap.js';
+import { swapOpenOceanTool } from './swap/swap-openocean.js';
+import { swapPendleTool } from './swap/swap-pendle.js';
+
+// LP tools
+import { lpCreatePositionTool } from './lp/lp-create-position.js';
+import { lpAddLiquidityTool } from './lp/lp-add-liquidity.js';
+import { lpRemoveLiquidityTool } from './lp/lp-remove-liquidity.js';
+import { lpCollectFeesTool } from './lp/lp-collect-fees.js';
+
+// Yield tools
+import { gmxTool } from './yield/gmx.js';
+import { pendleLpTool } from './yield/pendle-lp.js';
+import { penpieTool } from './yield/penpie.js';
+
+// Flash loan tools
+import { flashloanTool } from './flashloan/flashloan.js';
 
 // Transaction tools
 import { previewTransactionTool } from './transaction/preview-transaction.js';
@@ -73,9 +89,17 @@ export {
   lendBorrowTool,
   lendRepayTool,
   listAdaptersTool,
-  buildStrategyTool,
-  simulateStrategyTool,
-  executeStrategyTool,
+  swapTool,
+  swapOpenOceanTool,
+  swapPendleTool,
+  lpCreatePositionTool,
+  lpAddLiquidityTool,
+  lpRemoveLiquidityTool,
+  lpCollectFeesTool,
+  gmxTool,
+  pendleLpTool,
+  penpieTool,
+  flashloanTool,
   previewTransactionTool,
   getTransactionStatusTool,
   checkFoundryTool,
@@ -118,11 +142,27 @@ export const allTools = [
   lendBorrowTool,
   lendRepayTool,
 
-  // Strategy (4)
+  // Strategy (1)
   listAdaptersTool,
-  buildStrategyTool,
-  simulateStrategyTool,
-  executeStrategyTool,
+
+  // Swap (3)
+  swapTool,
+  swapOpenOceanTool,
+  swapPendleTool,
+
+  // LP (4)
+  lpCreatePositionTool,
+  lpAddLiquidityTool,
+  lpRemoveLiquidityTool,
+  lpCollectFeesTool,
+
+  // Yield (3)
+  gmxTool,
+  pendleLpTool,
+  penpieTool,
+
+  // Flash Loan (1)
+  flashloanTool,
 
   // Transaction (2)
   previewTransactionTool,
@@ -161,9 +201,17 @@ export type ToolName =
   | 'factor_lend_borrow'
   | 'factor_lend_repay'
   | 'factor_list_adapters'
-  | 'factor_build_strategy'
-  | 'factor_simulate_strategy'
-  | 'factor_execute_strategy'
+  | 'factor_swap'
+  | 'factor_swap_openocean'
+  | 'factor_swap_pendle'
+  | 'factor_lp_create_position'
+  | 'factor_lp_add_liquidity'
+  | 'factor_lp_remove_liquidity'
+  | 'factor_lp_collect_fees'
+  | 'factor_gmx'
+  | 'factor_pendle_lp'
+  | 'factor_penpie'
+  | 'factor_flashloan'
   | 'factor_preview_transaction'
   | 'factor_get_transaction_status'
   | 'factor_check_foundry'

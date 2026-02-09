@@ -7,7 +7,7 @@ import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 
-const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho']);
+const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho', 'siloV2']);
 
 export const lendRepaySchema = z.object({
   vaultAddress: z.string(),
@@ -36,7 +36,7 @@ function getChainIdEnum(chain: string): ChainId {
 
 export const lendRepayTool = {
   name: 'factor_lend_repay',
-  description: 'Repay borrowed assets to a lending protocol (Aave, Compound V3, or Morpho) through a Factor vault. Use amount "all" to repay the entire debt.',
+  description: 'Repay borrowed assets to a lending protocol (Aave, Compound V3, Morpho, or Silo V2) through a Factor vault. Use amount "all" to repay the entire debt.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -46,16 +46,16 @@ export const lendRepayTool = {
       },
       protocol: {
         type: 'string',
-        enum: ['aave', 'compoundV3', 'morpho'],
+        enum: ['aave', 'compoundV3', 'morpho', 'siloV2'],
         description: 'The lending protocol to repay to',
       },
       debtAddress: {
         type: 'string',
-        description: 'Token address of the debt to repay (required for aave and compoundV3)',
+        description: 'Token address of the debt to repay (required for aave, compoundV3, siloV2)',
       },
       marketAddress: {
         type: 'string',
-        description: 'Compound V3 market address (required for compoundV3)',
+        description: 'Market address (required for compoundV3 and siloV2)',
       },
       marketId: {
         type: 'string',
@@ -88,6 +88,10 @@ export const lendRepayTool = {
     }
     if (validated.protocol === 'morpho' && !validated.marketId) {
       throw new VaultError('marketId is required for Morpho');
+    }
+    if (validated.protocol === 'siloV2') {
+      if (!validated.debtAddress) throw new VaultError('debtAddress is required for Silo V2');
+      if (!validated.marketAddress) throw new VaultError('marketAddress is required for Silo V2');
     }
 
     const walletName = configManager.getWalletName();
@@ -145,6 +149,11 @@ export const lendRepayTool = {
             : isPercentage
             ? (strategyBuilder.adapter as any).morpho.repayByPercentage({ marketId: validated.marketId, percentage })
             : (strategyBuilder.adapter as any).morpho.repayBN({ marketId: validated.marketId, amountBN: validated.amount });
+          break;
+        case 'siloV2':
+          block = isAll
+            ? (strategyBuilder.adapter as any).siloV2.repayAll({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress })
+            : (strategyBuilder.adapter as any).siloV2.repayBN({ marketAddress: validated.marketAddress, debtAddress: validated.debtAddress, amountBN: validated.amount });
           break;
       }
 

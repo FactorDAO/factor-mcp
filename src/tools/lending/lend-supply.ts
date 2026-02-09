@@ -7,7 +7,7 @@ import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 
-const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho']);
+const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho', 'siloV2']);
 
 export const lendSupplySchema = z.object({
   vaultAddress: z.string(),
@@ -15,6 +15,7 @@ export const lendSupplySchema = z.object({
   assetAddress: z.string().optional(),
   marketAddress: z.string().optional(),
   marketId: z.string().optional(),
+  collateral: z.boolean().optional(),
   amount: z.string(),
   password: z.string().optional(),
 });
@@ -36,7 +37,7 @@ function getChainIdEnum(chain: string): ChainId {
 
 export const lendSupplyTool = {
   name: 'factor_lend_supply',
-  description: 'Supply/deposit assets to a lending protocol (Aave, Compound V3, or Morpho) through a Factor vault. Use amount "all" to supply the entire vault balance of the asset.',
+  description: 'Supply/deposit assets to a lending protocol (Aave, Compound V3, Morpho, or Silo V2) through a Factor vault. Use amount "all" to supply the entire vault balance of the asset. For Morpho, set collateral=true to supply as collateral instead of lending.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -46,20 +47,24 @@ export const lendSupplyTool = {
       },
       protocol: {
         type: 'string',
-        enum: ['aave', 'compoundV3', 'morpho'],
+        enum: ['aave', 'compoundV3', 'morpho', 'siloV2'],
         description: 'The lending protocol to use',
       },
       assetAddress: {
         type: 'string',
-        description: 'Token address to supply (required for aave and compoundV3)',
+        description: 'Token address to supply (required for aave, compoundV3, siloV2)',
       },
       marketAddress: {
         type: 'string',
-        description: 'Compound V3 market address (required for compoundV3)',
+        description: 'Market address (required for compoundV3 and siloV2)',
       },
       marketId: {
         type: 'string',
         description: 'Morpho market ID (required for morpho)',
+      },
+      collateral: {
+        type: 'boolean',
+        description: 'For Morpho: supply as collateral instead of lending. Default: false',
       },
       amount: {
         type: 'string',
@@ -89,6 +94,13 @@ export const lendSupplyTool = {
     }
     if (validated.protocol === 'morpho' && !validated.marketId) {
       throw new VaultError('marketId is required for Morpho');
+    }
+    if (validated.protocol === 'morpho' && validated.collateral && !validated.assetAddress) {
+      throw new VaultError('assetAddress is required for Morpho collateral operations');
+    }
+    if (validated.protocol === 'siloV2') {
+      if (!validated.assetAddress) throw new VaultError('assetAddress is required for Silo V2');
+      if (!validated.marketAddress) throw new VaultError('marketAddress is required for Silo V2');
     }
 
     const walletName = configManager.getWalletName();
@@ -141,11 +153,24 @@ export const lendSupplyTool = {
             : (strategyBuilder.adapter as any).compoundV3.supplyBN({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
         case 'morpho':
+          if (validated.collateral) {
+            block = isAll
+              ? (strategyBuilder.adapter as any).morpho.supplyCollateralAll({ marketId: validated.marketId, assetAddress: validated.assetAddress })
+              : (strategyBuilder.adapter as any).morpho.supplyCollateralBN({ marketId: validated.marketId, assetAddress: validated.assetAddress, amountBN: validated.amount });
+          } else {
+            block = isAll
+              ? (strategyBuilder.adapter as any).morpho.supplyAll({ marketId: validated.marketId })
+              : isPercentage
+              ? (strategyBuilder.adapter as any).morpho.supplyByPercentage({ marketId: validated.marketId, percentage })
+              : (strategyBuilder.adapter as any).morpho.supplyBN({ marketId: validated.marketId, amountBN: validated.amount });
+          }
+          break;
+        case 'siloV2':
           block = isAll
-            ? (strategyBuilder.adapter as any).morpho.supplyAll({ marketId: validated.marketId })
+            ? (strategyBuilder.adapter as any).siloV2.depositAll({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress })
             : isPercentage
-            ? (strategyBuilder.adapter as any).morpho.supplyByPercentage({ marketId: validated.marketId, percentage })
-            : (strategyBuilder.adapter as any).morpho.supplyBN({ marketId: validated.marketId, amountBN: validated.amount });
+            ? (strategyBuilder.adapter as any).siloV2.depositByPercentage({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, percentage })
+            : (strategyBuilder.adapter as any).siloV2.depositBN({ marketAddress: validated.marketAddress, assetAddress: validated.assetAddress, amountBN: validated.amount });
           break;
       }
 

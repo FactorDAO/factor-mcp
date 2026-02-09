@@ -44,6 +44,8 @@ export interface AdapterInfo {
   protocol: string;
   supportedActions: string[];
   description: string;
+  chains: ('ARBITRUM_ONE' | 'BASE' | 'MAINNET')[];
+  category: 'lending' | 'dex' | 'lp' | 'yield' | 'perp' | 'flashloan' | 'policy' | 'automation';
 }
 
 
