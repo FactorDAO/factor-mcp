@@ -6,17 +6,17 @@ import { VaultError, WalletError, TransactionError, SdkError } from '../../utils
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 
-export const swapSchema = z.object({
+export const swapExactOutputSchema = z.object({
   vaultAddress: z.string(),
   tokenIn: z.string(),
   tokenOut: z.string(),
   fee: z.string().optional(),
-  amount: z.string(),
-  slippage: z.number().optional(),
+  amountOut: z.string(),
+  amountInMax: z.string().optional(),
   password: z.string().optional(),
 });
 
-export type SwapInput = z.infer<typeof swapSchema>;
+export type SwapExactOutputInput = z.infer<typeof swapExactOutputSchema>;
 
 function getChainIdEnum(chain: string): ChainId {
   switch (chain) {
@@ -31,9 +31,9 @@ function getChainIdEnum(chain: string): ChainId {
   }
 }
 
-export const swapTool = {
-  name: 'factor_swap',
-  description: 'Swap tokens through Uniswap V3 via a Factor vault (exact input — you specify how much to spend). Supports "all" to swap entire balance, percentage amounts like "50%", or exact amounts in base units (wei). For exact output swaps (specify how much to receive), use factor_swap_exact_output instead. Fee tiers: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%).',
+export const swapExactOutputTool = {
+  name: 'factor_swap_exact_output',
+  description: 'Swap tokens through Uniswap V3 via a Factor vault, specifying the exact output amount desired. Use amountInMax to set the maximum input you are willing to spend, or use "all" to allow spending the entire vault balance of tokenIn. Fee tiers: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -47,30 +47,30 @@ export const swapTool = {
       },
       tokenOut: {
         type: 'string',
-        description: 'Address of the output token to swap to',
+        description: 'Address of the output token to receive',
       },
       fee: {
         type: 'string',
         enum: ['100', '500', '3000', '10000'],
         description: 'Uniswap V3 fee tier: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%). Default: 3000',
       },
-      amount: {
+      amountOut: {
         type: 'string',
-        description: 'Amount in base units (wei), or "all" to swap entire vault balance, or "50%" for percentage',
+        description: 'Exact amount of output token desired in base units (wei)',
       },
-      slippage: {
-        type: 'number',
-        description: 'Slippage tolerance as a percentage (e.g., 0.5 for 0.5%). Default: 1',
+      amountInMax: {
+        type: 'string',
+        description: 'Maximum amount of input token to spend in base units (wei), or "all" to use entire vault balance as maximum. If not provided when not using "all", defaults to "all".',
       },
       password: {
         type: 'string',
         description: 'Wallet password if encrypted',
       },
     },
-    required: ['vaultAddress', 'tokenIn', 'tokenOut', 'amount'],
+    required: ['vaultAddress', 'tokenIn', 'tokenOut', 'amountOut'],
   },
-  handler: async (input: SwapInput) => {
-    const validated = swapSchema.parse(input);
+  handler: async (input: SwapExactOutputInput) => {
+    const validated = swapExactOutputSchema.parse(input);
 
     if (!isAddress(validated.vaultAddress)) {
       throw new VaultError('Invalid vault address');
@@ -92,15 +92,8 @@ export const swapTool = {
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
     const fee = parseInt(validated.fee || '3000');
-    const slippage = validated.slippage || 1;
-    const isAll = validated.amount.toLowerCase() === 'all';
-    const percentageMatch = validated.amount.match(/^(\d+(?:\.\d+)?)%$/);
-    const isPercentage = !!percentageMatch;
-    const percentage = isPercentage ? parseFloat(percentageMatch![1]) : 0;
-
-    if (isPercentage && (percentage <= 0 || percentage > 100)) {
-      throw new VaultError('Percentage must be between 0 and 100');
-    }
+    const amountInMax = validated.amountInMax?.toLowerCase() || 'all';
+    const isAll = amountInMax === 'all' || !validated.amountInMax;
 
     try {
       const proVault = new StudioProVault({
@@ -118,18 +111,20 @@ export const swapTool = {
 
       let block: SendTransactionParams;
 
-      const swapParams = {
+      const baseParams = {
         tokenInAddress: validated.tokenIn,
         tokenOutAddress: validated.tokenOut,
+        amountOutBN: validated.amountOut,
         fee,
       };
 
       if (isAll) {
-        block = (strategyBuilder.adapter as any).uniswap.exactInputSingleAll(swapParams);
-      } else if (isPercentage) {
-        block = (strategyBuilder.adapter as any).uniswap.exactInputSingleByPercentage({ ...swapParams, percentage });
+        block = (strategyBuilder.adapter as any).uniswap.exactOutputSingleAll(baseParams);
       } else {
-        block = (strategyBuilder.adapter as any).uniswap.exactInputSingleBN({ ...swapParams, amountInBN: validated.amount });
+        block = (strategyBuilder.adapter as any).uniswap.exactOutputSingleBN({
+          ...baseParams,
+          amountInMaxBN: amountInMax,
+        });
       }
 
       const executeData = proVault.executeByManager([block]);
@@ -145,13 +140,14 @@ export const swapTool = {
         return {
           success: true,
           simulationMode: true,
-          action: 'swap',
+          action: 'swap_exact_output',
           protocol: 'uniswap',
           vaultAddress,
           tokenIn: validated.tokenIn,
           tokenOut: validated.tokenOut,
           fee,
-          amount: validated.amount,
+          amountOut: validated.amountOut,
+          amountInMax: isAll ? 'all' : amountInMax,
           transaction: {
             to: executeData.to,
             data: executeData.data,
@@ -169,22 +165,23 @@ export const swapTool = {
       return {
         success: true,
         simulationMode: false,
-        action: 'swap',
+        action: 'swap_exact_output',
         protocol: 'uniswap',
         vaultAddress,
         tokenIn: validated.tokenIn,
         tokenOut: validated.tokenOut,
         fee,
-        amount: validated.amount,
+        amountOut: validated.amountOut,
+        amountInMax: isAll ? 'all' : amountInMax,
         transactionHash: result.hash,
         chain,
-        note: 'Swap transaction submitted. Use factor_get_transaction_status to monitor progress.',
+        note: 'Exact output swap transaction submitted. Use factor_get_transaction_status to monitor progress.',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError || error instanceof TransactionError) {
         throw error;
       }
-      throw new SdkError('Failed to execute swap', error);
+      throw new SdkError('Failed to execute exact output swap', error);
     }
   },
 };

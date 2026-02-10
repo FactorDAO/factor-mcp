@@ -53,6 +53,7 @@ import { listAdaptersTool } from './strategy/list-adapters.js';
 
 // Swap tools
 import { swapTool } from './swap/swap.js';
+import { swapExactOutputTool } from './swap/swap-exact-output.js';
 import { swapOpenOceanTool } from './swap/swap-openocean.js';
 import { swapPendleTool } from './swap/swap-pendle.js';
 
@@ -123,6 +124,7 @@ export {
   lendRepayTool,
   listAdaptersTool,
   swapTool,
+  swapExactOutputTool,
   swapOpenOceanTool,
   swapPendleTool,
   lpCreatePositionTool,
@@ -197,8 +199,9 @@ export const allTools = [
   // Strategy (1)
   listAdaptersTool,
 
-  // Swap (3)
+  // Swap (4)
   swapTool,
+  swapExactOutputTool,
   swapOpenOceanTool,
   swapPendleTool,
 
@@ -269,6 +272,7 @@ export type ToolName =
   | 'factor_lend_repay'
   | 'factor_list_adapters'
   | 'factor_swap'
+  | 'factor_swap_exact_output'
   | 'factor_swap_openocean'
   | 'factor_swap_pendle'
   | 'factor_lp_create_position'

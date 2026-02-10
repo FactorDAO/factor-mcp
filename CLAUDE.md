@@ -35,7 +35,7 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - **production** - Production contracts
 - **testing** - Testing/staging contracts (default for development)
 
-## Available Tools (59 total)
+## Available Tools (60 total)
 
 ### Configuration (5 tools)
 - `factor_get_config` - View current configuration (chain, RPC, wallet, simulation mode, environment)
@@ -87,8 +87,9 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_lend_borrow` - Borrow assets from a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2)
 - `factor_lend_repay` - Repay borrowed assets to a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2)
 
-### Swap Operations (3 tools)
-- `factor_swap` - Execute Uniswap V3 token swaps through a vault. Supports "all", percentages, and fee tiers (100/500/3000/10000).
+### Swap Operations (4 tools)
+- `factor_swap` - Execute Uniswap V3 exact input swaps (specify how much to spend). Supports "all", percentages, and fee tiers (100/500/3000/10000).
+- `factor_swap_exact_output` - Execute Uniswap V3 exact output swaps (specify how much to receive). Set amountOut for the desired output amount, and amountInMax for the maximum input to spend (or "all" to use entire balance). Fee tiers: 100/500/3000/10000.
 - `factor_swap_openocean` - Execute OpenOcean aggregated swaps. Requires swap data from OpenOcean API.
 - `factor_swap_pendle` - Execute Pendle PT/YT swaps. Swap between tokens and Principal/Yield tokens.
 
@@ -321,9 +322,10 @@ Withdraw, borrow, and repay follow the same pattern with factor_lend_withdraw, f
 
 ### Swap Quick Reference
 ```
-Uniswap V3 swap:    factor_swap with tokenIn, tokenOut, amount ("all", "50%", or wei), fee (default 3000)
-OpenOcean swap:     factor_swap_openocean with tokenIn, tokenOut, amount, openOceanSwapData
-Pendle PT/YT swap:  factor_swap_pendle with marketAddress, direction, tokenAddress, amount, approxParams
+Uniswap V3 exact input:   factor_swap with tokenIn, tokenOut, amount ("all", "50%", or wei), fee (default 3000)
+Uniswap V3 exact output:  factor_swap_exact_output with tokenIn, tokenOut, amountOut (wei), amountInMax ("all" or wei), fee (default 3000)
+OpenOcean swap:            factor_swap_openocean with tokenIn, tokenOut, amount, openOceanSwapData
+Pendle PT/YT swap:         factor_swap_pendle with marketAddress, direction, tokenAddress, amount, approxParams
 ```
 
 ### LP Quick Reference
