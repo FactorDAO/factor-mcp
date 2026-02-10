@@ -380,7 +380,7 @@ function buildMorphoLendingConfig(
 
 export const vaultTemplatesTool = {
   name: 'factor_vault_templates',
-  description: 'Get pre-configured vault templates for the current chain. Returns ready-to-use parameters for factor_create_vault. When lendingProtocol is specified (aave, compoundV3, morpho), templates include the protocol adapter, aToken/cToken/debt tokens, and accounting addresses baked into createVaultParams — so the vault deploys fully ready for lending in a single transaction. Also returns postDeploySteps with exact tool calls for deposit + supply.',
+  description: 'ALWAYS call this first when creating a vault. Returns ready-to-use createVaultParams for factor_create_vault. IMPORTANT: If the task involves lending/supplying, you MUST set lendingProtocol — this pre-configures everything so the vault deploys lending-ready in ONE transaction. "aave" adds the Aave adapter + aToken (interest-bearing) + variableDebtToken. "compoundV3" adds both Compound V3 adapters + cToken (market contract) + market registration step. "morpho" adds both Morpho adapters + registers collateral and loan tokens with Chainlink accounting + lists available markets to choose from. Without lendingProtocol you get a basic vault that requires many extra manual steps. Also returns postDeploySteps with exact tool calls for deposit + supply.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -392,7 +392,7 @@ export const vaultTemplatesTool = {
       lendingProtocol: {
         type: 'string',
         enum: ['aave', 'compoundV3', 'morpho'],
-        description: 'Optional: include lending protocol configuration in the template. When set, createVaultParams will include the protocol adapter, aToken/cToken in initialAssetAddresses, debt tokens in initialDebtAddresses, and correct accounting adapters. The vault deploys ready for lending.',
+        description: 'Set this when the task involves lending or supplying. Each protocol has different token designs read from the tokenlist: "aave" → aToken (interest-bearing receipt) + variableDebtToken for borrowing. "compoundV3" → cToken (the market contract, e.g. cUSDCv3) + requires market registration post-deploy. "morpho" → collateralToken + loanToken per market, registered with Chainlink accounting + requires market selection and addMarketToAssetAndDebt post-deploy. The vault deploys ready for lending — no separate factor_add_adapter or factor_add_vault_token calls needed.',
       },
     },
     required: [],
@@ -582,7 +582,7 @@ export const vaultTemplatesTool = {
 
     const note = input.lendingProtocol
       ? `Templates include the ${input.lendingProtocol} adapter, lending tokens, and accounting addresses baked into createVaultParams. The vault deploys fully ready for lending. AdapterManagement + AssetDebt adapters are auto-added by factor_create_vault.`
-      : 'Templates include minimal adapters (AdapterManagement + AssetDebt) which are auto-added by factor_create_vault. You can add more adapters later with factor_add_adapter.';
+      : 'These are BASIC templates (no lending). If the task involves lending/supplying, call this tool again with lendingProtocol set: "aave" (adds aToken + debtToken), "compoundV3" (adds cToken market + registration step), or "morpho" (adds collateral/loan tokens + market selection). Each protocol has its own token design — the template reads the correct tokens from the tokenlist automatically.';
 
     return {
       success: true,

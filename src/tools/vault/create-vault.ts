@@ -86,7 +86,7 @@ async function getAccountingForAsset(
 
 export const createVaultTool = {
   name: 'factor_create_vault',
-  description: 'Deploy a new Factor Studio Pro vault. TIP: Use factor_vault_templates first to get ready-to-use parameters for this tool. Fees are in percentage (0-100). Requires token approval via factor_give_approval before deployment.',
+  description: 'Deploy a new Factor Studio Pro vault. IMPORTANT: Always call factor_vault_templates first to get ready-to-use createVaultParams. If the task involves lending, call factor_vault_templates with lendingProtocol set (aave/compoundV3/morpho) — each protocol has its own token design and the template pre-configures the correct adapters and tokens. Fees are in percentage (0-100). Requires token approval via factor_give_approval before deployment.',
   inputSchema: {
     type: 'object',
     properties: {

@@ -65,7 +65,7 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_get_factory_addresses` - Get whitelisted assets, adapters, and accounting addresses from factory
 - `factor_validate_vault_config` - Validate vault configuration before deployment
 - `factor_add_adapter` - Add a manager adapter to a vault
-- `factor_vault_templates` - Get pre-configured vault templates for the current chain. Returns ready-to-use parameters for `factor_create_vault` with correct token addresses and accounting adapters. Available denominators: USDC, USDT, WETH (varies by chain). When `lendingProtocol` is specified (aave, compoundV3, morpho), templates include the protocol adapter, lending tokens (aToken/cToken/debt), and accounting addresses baked into `createVaultParams` — the vault deploys fully ready for lending in a single transaction.
+- `factor_vault_templates` - **ALWAYS call this first when creating a vault.** Returns ready-to-use `createVaultParams` for `factor_create_vault`. **IMPORTANT: If the task involves lending, set `lendingProtocol`** — each protocol has its own token design: `"aave"` adds aToken + variableDebtToken, `"compoundV3"` adds cToken (market contract) + market registration step, `"morpho"` adds collateral/loan tokens with Chainlink accounting + market selection. The vault deploys lending-ready in one transaction. Available denominators: USDC, USDT, WETH (varies by chain).
 
 ### Vault Management (12 tools)
 - `factor_set_withdraw_fee` - Set withdraw fee in basis points (0-10000)

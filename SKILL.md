@@ -21,6 +21,34 @@ Factor Protocol is a DeFi infrastructure that allows users to create and manage 
 
 ---
 
+## IMPORTANT: How to Create a Vault
+
+**ALWAYS start with `factor_vault_templates`.** Never call `factor_create_vault` directly without first getting a template.
+
+**If the task involves lending/supplying, set `lendingProtocol`:**
+```
+factor_vault_templates { denominator: "USDC", lendingProtocol: "aave" }
+```
+This returns `createVaultParams` with the protocol's adapters and tokens already included. The vault deploys **fully ready for lending in a single transaction** — no need for separate `factor_add_adapter`, `factor_get_lending_tokens`, `factor_add_vault_token` calls.
+
+Each protocol has its own token design (read from the tokenlist):
+- **`"aave"`** → aToken (interest-bearing receipt, e.g. aArbUSDCn) + variableDebtToken for borrowing
+- **`"compoundV3"`** → cToken (the market contract, e.g. cUSDCv3) + requires `addMarketToAsset` post-deploy before supply
+- **`"morpho"`** → collateralToken + loanToken per market, registered with Chainlink accounting + requires user to choose a market, then `addMarketToAssetAndDebt` post-deploy
+
+**If the task is a basic vault (no lending):**
+```
+factor_vault_templates { denominator: "USDC" }
+```
+
+The template response includes:
+- `createVaultParams` — pass directly to `factor_create_vault`
+- `approvalStep` — call `factor_give_approval` with these params first
+- `postDeploySteps` — exact tool calls for deposit + supply (and market registration for Compound/Morpho)
+- `lending` — protocol-specific metadata (adapter addresses, token addresses, available markets)
+
+---
+
 ## Architecture Rules
 
 - **All vault interactions go through `executeByManager`**: Every on-chain operation on a vault (lending, swapping, adding adapters, etc.) is executed via the `proVault.executeByManager([blocks])` pattern. The SDK's `StrategyBuilder` generates the encoded blocks, and `StudioProVault.executeByManager()` wraps them in a manager call.

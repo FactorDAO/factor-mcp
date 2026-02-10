@@ -60,9 +60,9 @@ describe('Vault Templates - Lending Protocol Support', () => {
     });
 
     it('mentions all three protocols in description', () => {
-      expect(tool.description).toContain('aave');
-      expect(tool.description).toContain('compoundV3');
-      expect(tool.description).toContain('morpho');
+      expect(tool.description).toContain('Aave');
+      expect(tool.description).toContain('Compound');
+      expect(tool.description).toContain('Morpho');
     });
 
     it('mentions postDeploySteps in description', () => {
