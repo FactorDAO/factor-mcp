@@ -184,6 +184,35 @@ Add an asset or debt token to a vault using the AssetDebtAdapter via executeByMa
 
 ---
 
+### Token Tools
+
+#### `factor_give_approval`
+Approve an ERC20 token for spending by a spender address (e.g., a vault or factory). **This must be called before depositing tokens into a vault** if the vault does not have sufficient allowance.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| tokenAddress | string | Yes | The ERC20 token address to approve |
+| spenderAddress | string | Yes | The address to approve spending for (e.g., vault address, factory address) |
+| amount | string | No | Amount in base units, or "max" for unlimited (default: "max") |
+| password | string | No | Wallet password if encrypted |
+
+**Example:**
+```json
+{
+  "tokenAddress": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "spenderAddress": "0xVAULT_ADDRESS",
+  "amount": "max"
+}
+```
+
+**Notes:**
+- If the spender already has sufficient allowance, returns immediately without a transaction
+- Both `factor_deposit` and `factor_create_vault` will return an `INSUFFICIENT_ALLOWANCE` error with an `approvalHint` if you need to call this first
+- Use "max" for unlimited approval to avoid repeated approvals
+
+---
+
 ### Vault Query Tools
 
 #### `factor_get_owned_vaults`
@@ -598,7 +627,14 @@ Execute a built strategy on-chain.
    → Check hasEnoughBalance is true
    → Note expected sharesReceived
 
-4. factor_deposit {
+4. factor_give_approval {
+     tokenAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+     spenderAddress: "0xVAULT",
+     amount: "max"
+   }
+   → Approves USDC for the vault (skips if already approved)
+
+5. factor_deposit {
      vaultAddress: "0xVAULT",
      assetAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
      amount: "1000000000",
@@ -874,20 +910,65 @@ Step 8: Supply
 
 ### Workflow 8: Create a New Vault
 
+**RECOMMENDED: Always start from a template.** When the user wants to create a vault, use `factor_vault_templates` first. Ask the user:
+1. Which **chain** to deploy on (ARBITRUM_ONE, BASE, MAINNET)
+2. Which **denominator token** (USDC, WETH, etc.)
+3. Which **lending protocols** to include (aave, compoundV3, morpho, or none)
+
+Then call `factor_vault_templates` with the appropriate `denominator` and `lendingProtocol` params. The template provides ready-to-use `createVaultParams` with all adapters, tokens, and accounting addresses pre-configured.
+
 ```
 1. factor_get_config
-   → Ensure wallet is configured
+   → Ensure wallet is configured, check current chain
 
-2. factor_create_vault {
-     name: "My Strategy Vault",
-     symbol: "MSV",
-     assetDenominatorAddress: "0xUSDC...",
-     managementFee: 2,
-     performanceFee: 20,
-     initialManagerAdapters: ["0xUniswapAdapter...", "0xAaveAdapter..."]
-   }
+2. factor_vault_templates { denominator: "USDC" }
+   → Get ready-to-use createVaultParams and approvalStep
+   → Or with lending: factor_vault_templates { denominator: "USDC", lendingProtocol: "aave" }
+
+3. factor_give_approval with the approvalStep params
+
+4. factor_create_vault with the createVaultParams (customize name/symbol as needed)
    → Get transaction hash
    → Vault address available in transaction receipt events
+
+5. (If lending) Follow the postDeploySteps from the template:
+   → factor_deposit to add funds
+   → factor_lend_supply to supply to the protocol
+```
+
+### Workflow 9: Create Vault + Supply to Aave (Streamlined)
+```
+1. factor_vault_templates { denominator: "USDC", lendingProtocol: "aave" }
+   → Returns createVaultParams with Aave adapter, aToken, and debtToken pre-configured
+2. factor_give_approval with the approvalStep params
+3. factor_create_vault with the createVaultParams
+   → Vault deploys fully ready for Aave lending
+4. factor_deposit to add USDC to the vault
+5. factor_lend_supply { protocol: "aave", assetAddress: "0xUSDC...", amount: "all" }
+```
+
+### Workflow 10: Create Vault + Supply to Compound V3 (Streamlined)
+```
+1. factor_vault_templates { denominator: "USDC", lendingProtocol: "compoundV3" }
+   → Returns createVaultParams with both Compound V3 adapters and cToken pre-configured
+2. factor_give_approval with the approvalStep params
+3. factor_create_vault with the createVaultParams
+4. factor_execute_manager with registerMarket step from postDeploySteps (REQUIRED before supply)
+5. factor_deposit to add USDC to the vault
+6. factor_lend_supply { protocol: "compoundV3", marketAddress: "<cToken>", assetAddress: "0xUSDC...", amount: "all" }
+```
+
+### Workflow 11: Create Vault + Supply to Morpho (Streamlined)
+```
+1. factor_vault_templates { denominator: "USDC", lendingProtocol: "morpho" }
+   → Returns createVaultParams with Morpho adapters and all tokens pre-registered
+   → Also returns lending.availableMarkets — present these to the user
+2. Let the user choose a market from lending.availableMarkets (NEVER auto-select)
+3. factor_give_approval with the approvalStep params
+4. factor_create_vault with the createVaultParams
+5. factor_execute_manager with addMarketToAssetAndDebt for the chosen marketId (REQUIRED)
+6. factor_deposit to add USDC to the vault
+7. factor_lend_supply { protocol: "morpho", marketId: "<chosen>", amount: "all" }
 ```
 
 ---
@@ -906,6 +987,45 @@ Step 8: Supply
 
 ---
 
+## Fork Simulation with Balance Overrides
+
+When a write operation (vault deployment, swap, lending supply, etc.) fails with an `INSUFFICIENT_BALANCE` error, the error response includes a `simulationHint` with the exact parameters to retry using `factor_simulate_transaction` with `balanceOverrides`. This lets you test the full flow of any write operation without needing real funds.
+
+### How it works
+
+1. Any write tool call that fails due to insufficient ETH or token balance returns an `INSUFFICIENT_BALANCE` error with a `simulationHint`
+2. The `simulationHint` contains the `to`, `data`, and `value` fields from the failed transaction, plus a template `balanceOverrides` array
+3. Call `factor_simulate_transaction` with those params, adding any ERC20 overrides you need
+4. The simulation forks the network via anvil, overrides balances, executes the transaction, and returns the result
+
+### Example: Simulate a vault deployment without real funds
+
+```json
+{
+  "to": "0xFACTORY_ADDRESS",
+  "data": "0x...",
+  "balanceOverrides": [
+    {
+      "address": "0xYOUR_WALLET",
+      "ethBalance": "10000000000000000000",
+      "erc20": [
+        {
+          "token": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "amount": "1000000000"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Balance override details
+
+- **ETH**: Set directly via `anvil_setBalance`
+- **ERC20**: Uses storage slot probing — tries common balance mapping slots (0, 1, 2, 3, 4, 5, 9, 51), computes `keccak256(abi.encode(address, slot))`, sets via `anvil_setStorageAt`, then verifies with `balanceOf`. Works for standard ERC20s including proxies like USDC.
+
+---
+
 ## Error Handling
 
 **Common errors and solutions:**
@@ -914,7 +1034,7 @@ Step 8: Supply
 |-------|-------|----------|
 | "No wallet configured" | Wallet not set up | Run `factor_wallet_setup` |
 | "Invalid vault address" | Bad address format | Check address is valid hex |
-| "Insufficient balance" | Not enough tokens | Check balance before deposit |
+| "Insufficient balance" | Not enough tokens | Use `factor_simulate_transaction` with `balanceOverrides` (see simulationHint in error) |
 | "Insufficient shares" | Not enough shares | Check shares before withdraw |
 | "Not a valid deposit asset" | Token not whitelisted | Check vault's supported assets |
 | "Simulation mode" | Real tx not sent | Set simulationMode: false in config |

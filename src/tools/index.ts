@@ -19,10 +19,28 @@ import { executeManagerTool } from './vault/execute-manager.js';
 import { getFactoryAddressesTool } from './vault/get-factory-addresses.js';
 import { validateVaultConfigTool } from './vault/validate-vault-config.js';
 import { addAdapterTool } from './vault/add-adapter.js';
+import { vaultTemplatesTool } from './vault/vault-templates.js';
+
+// Vault Management tools
+import { setWithdrawFeeTool } from './vault/manage-fees.js';
+import { setDepositFeeTool } from './vault/manage-fees.js';
+import { setPerformanceFeeTool } from './vault/manage-fees.js';
+import { setManagementFeeTool } from './vault/manage-fees.js';
+import { chargePerformanceFeeTool } from './vault/manage-fees.js';
+import { setFeeReceiverTool } from './vault/manage-fees.js';
+import { setMaxCapTool } from './vault/manage-risk.js';
+import { setMaxDebtRatioTool } from './vault/manage-risk.js';
+import { setPriceDeviationAllowanceTool } from './vault/manage-risk.js';
+import { addVaultManagerTool } from './vault/manage-managers.js';
+import { removeVaultManagerTool } from './vault/manage-managers.js';
+import { setRiskManagerTool } from './vault/manage-managers.js';
 
 // Tokenlist tools
 import { getLendingTokensTool } from './tokenlist/get-lending-tokens.js';
 import { addVaultTokenTool } from './tokenlist/add-vault-token.js';
+
+// Token tools
+import { approveTool } from './token/approve.js';
 
 // Lending tools
 import { lendSupplyTool } from './lending/lend-supply.js';
@@ -61,6 +79,7 @@ import { checkFoundryTool } from './foundry/check-foundry.js';
 import { castCallTool } from './foundry/cast-call.js';
 import { simulateTransactionTool } from './foundry/simulate-transaction.js';
 import { decodeErrorTool } from './foundry/decode-error.js';
+import { runForgeScriptTool } from './foundry/run-forge-script.js';
 
 // Re-export
 export {
@@ -82,8 +101,22 @@ export {
   getFactoryAddressesTool,
   validateVaultConfigTool,
   addAdapterTool,
+  vaultTemplatesTool,
+  setWithdrawFeeTool,
+  setDepositFeeTool,
+  setPerformanceFeeTool,
+  setManagementFeeTool,
+  chargePerformanceFeeTool,
+  setFeeReceiverTool,
+  setMaxCapTool,
+  setMaxDebtRatioTool,
+  setPriceDeviationAllowanceTool,
+  addVaultManagerTool,
+  removeVaultManagerTool,
+  setRiskManagerTool,
   getLendingTokensTool,
   addVaultTokenTool,
+  approveTool,
   lendSupplyTool,
   lendWithdrawTool,
   lendBorrowTool,
@@ -106,6 +139,7 @@ export {
   castCallTool,
   simulateTransactionTool,
   decodeErrorTool,
+  runForgeScriptTool,
 };
 
 // Tool registry
@@ -117,7 +151,7 @@ export const allTools = [
   walletSetupTool,
   getAddressBookTool,
 
-  // Vault (13)
+  // Vault (14)
   getOwnedVaultsTool,
   getVaultInfoTool,
   getSharesTool,
@@ -131,10 +165,28 @@ export const allTools = [
   getFactoryAddressesTool,
   validateVaultConfigTool,
   addAdapterTool,
+  vaultTemplatesTool,
+
+  // Vault Management (12)
+  setWithdrawFeeTool,
+  setDepositFeeTool,
+  setPerformanceFeeTool,
+  setManagementFeeTool,
+  chargePerformanceFeeTool,
+  setFeeReceiverTool,
+  setMaxCapTool,
+  setMaxDebtRatioTool,
+  setPriceDeviationAllowanceTool,
+  addVaultManagerTool,
+  removeVaultManagerTool,
+  setRiskManagerTool,
 
   // Tokenlist (2)
   getLendingTokensTool,
   addVaultTokenTool,
+
+  // Token (1)
+  approveTool,
 
   // Lending (4)
   lendSupplyTool,
@@ -168,11 +220,12 @@ export const allTools = [
   previewTransactionTool,
   getTransactionStatusTool,
 
-  // Foundry (4)
+  // Foundry (5)
   checkFoundryTool,
   castCallTool,
   simulateTransactionTool,
   decodeErrorTool,
+  runForgeScriptTool,
 ];
 
 export type ToolName =
@@ -194,8 +247,22 @@ export type ToolName =
   | 'factor_get_factory_addresses'
   | 'factor_validate_vault_config'
   | 'factor_add_adapter'
+  | 'factor_vault_templates'
+  | 'factor_set_withdraw_fee'
+  | 'factor_set_deposit_fee'
+  | 'factor_set_performance_fee'
+  | 'factor_set_management_fee'
+  | 'factor_charge_performance_fee'
+  | 'factor_set_fee_receiver'
+  | 'factor_set_max_cap'
+  | 'factor_set_max_debt_ratio'
+  | 'factor_set_price_deviation_allowance'
+  | 'factor_add_vault_manager'
+  | 'factor_remove_vault_manager'
+  | 'factor_set_risk_manager'
   | 'factor_get_lending_tokens'
   | 'factor_add_vault_token'
+  | 'factor_give_approval'
   | 'factor_lend_supply'
   | 'factor_lend_withdraw'
   | 'factor_lend_borrow'
@@ -217,4 +284,5 @@ export type ToolName =
   | 'factor_check_foundry'
   | 'factor_cast_call'
   | 'factor_simulate_transaction'
-  | 'factor_decode_error';
+  | 'factor_decode_error'
+  | 'factor_run_forge_script';

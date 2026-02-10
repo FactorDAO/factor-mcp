@@ -70,6 +70,20 @@ export class SdkError extends FactorMcpError {
   }
 }
 
+export class InsufficientBalanceError extends FactorMcpError {
+  constructor(message: string, public simulationHint: object, details?: unknown) {
+    super(message, 'INSUFFICIENT_BALANCE', details);
+    this.name = 'InsufficientBalanceError';
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      simulationHint: this.simulationHint,
+    };
+  }
+}
+
 export function formatError(error: unknown): { error: string; message: string; details?: unknown } {
   if (error instanceof FactorMcpError) {
     return error.toJSON();

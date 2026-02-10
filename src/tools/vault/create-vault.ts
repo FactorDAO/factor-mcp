@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import { isAddress, type Address } from 'viem';
+import { isAddress, type Address, parseAbi } from 'viem';
 import { configManager } from '../../config/index.js';
 import { getWalletAddress } from '../../wallet/key-manager.js';
-import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
+import { sendTransaction, estimateGas, getPublicClient, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProFactory, StudioProVaultStats, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
+import { generateDeployVaultScript } from '../../templates/index.js';
+import { saveForgeScript } from '../foundry/run-forge-script.js';
 
 export const createVaultSchema = z.object({
   name: z.string().min(1).max(50),
@@ -17,7 +19,7 @@ export const createVaultSchema = z.object({
   upgradeable: z.boolean().default(false),
   upgradeTimelockSeconds: z.number().default(86400), // 1 day
   cooldownTimeSeconds: z.number().default(0),
-  maxCap: z.string().default('0'),
+  maxCap: z.string().default('1000000000000'),
   maxDebtRatio: z.string().default('10000'), // 100% in basis points
   // Immutable option - if true, no default adapters are added
   immutable: z.boolean().default(false),
@@ -84,7 +86,7 @@ async function getAccountingForAsset(
 
 export const createVaultTool = {
   name: 'factor_create_vault',
-  description: 'Deploy a new Factor Studio Pro vault with full configuration options. Fees are in percentage (0-100). Use factor_get_factory_addresses to find valid accounting adapters for assets.',
+  description: 'Deploy a new Factor Studio Pro vault. TIP: Use factor_vault_templates first to get ready-to-use parameters for this tool. Fees are in percentage (0-100). Requires token approval via factor_give_approval before deployment.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -122,7 +124,7 @@ export const createVaultTool = {
       },
       maxCap: {
         type: 'string',
-        description: 'Maximum vault cap in base units. Default: 0 (no cap)',
+        description: 'Maximum vault cap in base units. Default: 1000000000000 (1M for 6-decimal tokens like USDC)',
       },
       maxDebtRatio: {
         type: 'string',
@@ -327,7 +329,7 @@ export const createVaultTool = {
       const managementFeeBps = Math.round(validated.managementFee * 100).toString();
       const performanceFeeBps = Math.round(validated.performanceFee * 100).toString();
 
-      // Build the deploy vault transaction using SDK
+      // Build the deploy vault transaction using SDK (before checking allowance so we can include tx data in errors)
       const createData = proFactory.deployVault({
         initialDepositBN: validated.initialDepositAmount,
         name: validated.name,
@@ -364,6 +366,62 @@ export const createVaultTool = {
         to: createData.to as Address,
         data: createData.data as `0x${string}`,
       };
+
+      // Check allowance for initial deposit (after building tx data so we can include it in the error)
+      const initialDeposit = BigInt(validated.initialDepositAmount);
+      if (initialDeposit > 0n) {
+        const ERC20_ALLOWANCE_ABI = parseAbi([
+          'function allowance(address owner, address spender) view returns (uint256)',
+        ]);
+
+        const publicClient = getPublicClient();
+        const allContractAddresses = getContractAddressesForChainOrThrow(chainId, environment);
+        const factoryAddr = (allContractAddresses as any).factor_studio_pro_factory as string | undefined;
+        if (factoryAddr) {
+          const allowance = await publicClient.readContract({
+            address: validated.assetDenominatorAddress as Address,
+            abi: ERC20_ALLOWANCE_ABI,
+            functionName: 'allowance',
+            args: [userAddress, factoryAddr as Address],
+          });
+
+          if (allowance < initialDeposit) {
+            const forgeScript = generateDeployVaultScript({
+              factoryAddress: factoryAddr,
+              tokenAddress: validated.assetDenominatorAddress,
+              depositAmount: initialDeposit.toString(),
+              calldata: txParams.data as string,
+              vaultName: validated.name,
+            });
+
+            // Save script to disk so the LLM only needs to pass a short reference
+            const scriptRef = saveForgeScript(forgeScript, 'vault_deploy');
+
+            return {
+              success: false,
+              error: 'INSUFFICIENT_ALLOWANCE',
+              message: `Insufficient token allowance for vault deployment. The factory needs at least ${initialDeposit.toString()} wei of the denominator token (${validated.assetDenominatorAddress}) approved. Current allowance: ${allowance.toString()}. Call factor_give_approval first, or use factor_run_forge_script with the simulationHint below to simulate the full deployment on a forked network.`,
+              currentAllowance: allowance.toString(),
+              requiredAmount: initialDeposit.toString(),
+              approvalHint: {
+                tool: 'factor_give_approval',
+                params: {
+                  tokenAddress: validated.assetDenominatorAddress,
+                  spenderAddress: factoryAddr,
+                  amount: 'max',
+                },
+              },
+              simulationHint: {
+                tool: 'factor_run_forge_script',
+                params: {
+                  scriptRef,
+                },
+              },
+              note: 'Call factor_run_forge_script with the scriptRef above to simulate the full deployment on a forked network. The script handles ETH funding, token approval, and vault creation.',
+            };
+          }
+        }
+      }
 
       if (configManager.isSimulationMode()) {
         const gasEstimate = await estimateGas(txParams);

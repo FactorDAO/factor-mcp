@@ -12,7 +12,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { getPrivateKey, getWalletAddress } from './key-manager.js';
 import { configManager } from '../config/index.js';
-import { TransactionError, WalletError } from '../utils/errors.js';
+import { TransactionError, WalletError, InsufficientBalanceError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 
 export interface TransactionParams {
@@ -128,6 +128,35 @@ export async function estimateGas(params: TransactionParams): Promise<GasEstimat
       totalCostEth,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isInsufficientBalance =
+      errorMessage.includes('insufficient funds for gas') ||
+      errorMessage.includes('insufficient balance') ||
+      errorMessage.includes('exceeds the balance') ||
+      errorMessage.includes('sender doesn\'t have enough funds');
+
+    if (isInsufficientBalance) {
+      throw new InsufficientBalanceError(
+        `Insufficient balance to estimate gas. Use factor_run_forge_script to simulate this operation on a forked network — write a Solidity script that uses vm.deal() for ETH and deal(token,to,amount) for ERC20 balances. Or use factor_simulate_transaction with balanceOverrides for simpler ETH-only overrides.`,
+        {
+          tool: 'factor_simulate_transaction',
+          params: {
+            to: params.to,
+            data: params.data,
+            value: params.value?.toString(),
+            balanceOverrides: [
+              {
+                address: from,
+                ethBalance: '10000000000000000000',
+              },
+            ],
+          },
+          forgeScriptAlternative: 'For operations that need ERC20 token balances, use factor_run_forge_script instead. Write a Solidity script that extends Test from "forge-std/Test.sol" and use deal(tokenAddress, msg.sender, amount) for ERC20 balances and vm.deal(msg.sender, 10 ether) for ETH.',
+        },
+        error
+      );
+    }
+
     throw new TransactionError('Failed to estimate gas', error);
   }
 }
@@ -192,6 +221,35 @@ export async function sendTransaction(
       simulationMode: false,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isInsufficientBalance =
+      errorMessage.includes('insufficient funds for gas') ||
+      errorMessage.includes('insufficient balance') ||
+      errorMessage.includes('exceeds the balance') ||
+      errorMessage.includes('sender doesn\'t have enough funds');
+
+    if (isInsufficientBalance) {
+      throw new InsufficientBalanceError(
+        `Insufficient balance to send transaction. Use factor_run_forge_script to simulate this operation on a forked network — write a Solidity script that uses vm.deal() for ETH and deal(token,to,amount) for ERC20 balances. Or use factor_simulate_transaction with balanceOverrides for simpler ETH-only overrides.`,
+        {
+          tool: 'factor_simulate_transaction',
+          params: {
+            to: params.to,
+            data: params.data,
+            value: params.value?.toString(),
+            balanceOverrides: [
+              {
+                address: account.address,
+                ethBalance: '10000000000000000000',
+              },
+            ],
+          },
+          forgeScriptAlternative: 'For operations that need ERC20 token balances, use factor_run_forge_script instead. Write a Solidity script that extends Test from "forge-std/Test.sol" and use deal(tokenAddress, msg.sender, amount) for ERC20 balances and vm.deal(msg.sender, 10 ether) for ETH.',
+        },
+        error
+      );
+    }
+
     throw new TransactionError('Failed to send transaction', error);
   }
 }

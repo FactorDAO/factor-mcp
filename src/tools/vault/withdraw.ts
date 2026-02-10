@@ -6,6 +6,8 @@ import { sendTransaction, estimateGas, type TransactionParams } from '../../wall
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
+import { generateWithdrawScript } from '../../templates/index.js';
+import { saveForgeScript } from '../foundry/run-forge-script.js';
 
 export const withdrawSchema = z.object({
   vaultAddress: z.string(),
@@ -85,19 +87,11 @@ export const withdrawTool = {
         jsonRpcUrl: configManager.getRpcUrl(),
       });
 
-      // Check user's share balance
-      const balance = await proVault.balanceOf(userAddress);
-      if (balance < shares) {
-        throw new VaultError(
-          `Insufficient shares. Have: ${balance.toString()}, Need: ${shares.toString()}`
-        );
-      }
-
       // Get the denominator asset (main withdraw asset)
       const vaultData = await proVault.getVaultData();
       const assetAddress = vaultData.metadata.assetDenominatorAddress;
 
-      // Build withdraw transaction using SDK
+      // Build withdraw transaction using SDK (before balance check so we can include calldata in hints)
       const withdrawData = proVault.withdrawAsset({
         assetAddress,
         shareAmountBN: shares.toString(),
@@ -109,6 +103,30 @@ export const withdrawTool = {
         to: withdrawData.to as Address,
         data: withdrawData.data as `0x${string}`,
       };
+
+      // Check user's share balance
+      const balance = await proVault.balanceOf(userAddress);
+      if (balance < shares) {
+        const forgeScript = generateWithdrawScript({
+          vaultAddress: validated.vaultAddress,
+          shares: shares.toString(),
+          calldata: redeemParams.data as string,
+        });
+        const scriptRef = saveForgeScript(forgeScript, 'withdraw');
+
+        return {
+          success: false,
+          error: 'INSUFFICIENT_SHARES',
+          message: `Insufficient shares. Have: ${balance.toString()}, Need: ${shares.toString()}. Call factor_run_forge_script with the scriptRef below to simulate the withdrawal.`,
+          currentBalance: balance.toString(),
+          requiredShares: shares.toString(),
+          simulationHint: {
+            tool: 'factor_run_forge_script',
+            params: { scriptRef },
+          },
+          note: 'Call factor_run_forge_script with the scriptRef above to simulate the withdrawal on a forked network.',
+        };
+      }
 
       if (configManager.isSimulationMode()) {
         const gasEstimate = await estimateGas(redeemParams);

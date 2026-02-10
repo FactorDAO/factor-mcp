@@ -4,7 +4,9 @@ import { SdkError } from '../../utils/errors.js';
 import { StudioProVaultStats, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 
-export const getFactoryAddressesSchema = z.object({});
+export const getFactoryAddressesSchema = z.object({
+  search: z.string().optional(),
+});
 
 export type GetFactoryAddressesInput = z.infer<typeof getFactoryAddressesSchema>;
 
@@ -23,12 +25,19 @@ function getChainIdEnum(chain: string): ChainId {
 
 export const getFactoryAddressesTool = {
   name: 'factor_get_factory_addresses',
-  description: 'Get all whitelisted assets, adapters, and their accounting addresses from the factory. Use this to find the correct accounting adapter for an asset before creating a vault.',
+  description: 'Get whitelisted assets, adapters, and their accounting addresses from the factory. Use this to find the correct accounting adapter for an asset before creating a vault. TIP: Pass a "search" address to filter results and get only the matching asset/adapter instead of the full list.',
   inputSchema: {
     type: 'object',
-    properties: {},
+    properties: {
+      search: {
+        type: 'string',
+        description: 'Optional address to search for. Filters assets, debts, and adapters to only return entries matching this address (case-insensitive). Returns much smaller response.',
+      },
+    },
   },
-  handler: async (_input: GetFactoryAddressesInput) => {
+  handler: async (input: GetFactoryAddressesInput) => {
+    const validated = getFactoryAddressesSchema.parse(input);
+    const searchAddr = validated.search?.toLowerCase();
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
@@ -48,7 +57,7 @@ export const getFactoryAddressesTool = {
       const activeAddresses = await proVaultStats.getFactoryActiveAddresses();
 
       // Process manager adapters with names
-      const managerAdapters = activeAddresses.managerAdapters.map((adapter: { id: string }) => {
+      let managerAdapters = activeAddresses.managerAdapters.map((adapter: { id: string }) => {
         try {
           const a = sb.adapter.getAdapterByAddress(adapter.id);
           return { address: adapter.id, name: a.adapterName };
@@ -58,7 +67,7 @@ export const getFactoryAddressesTool = {
       });
 
       // Process owner adapters with names
-      const ownerAdapters = activeAddresses.ownerAdapters.map((adapter: { id: string }) => {
+      let ownerAdapters = activeAddresses.ownerAdapters.map((adapter: { id: string }) => {
         try {
           const a = sb.adapter.getAdapterByAddress(adapter.id);
           return { address: adapter.id, name: a.adapterName };
@@ -68,26 +77,47 @@ export const getFactoryAddressesTool = {
       });
 
       // Process assets with accounting
-      const assets = activeAddresses.assets.map((asset: { asset: string; accounting: string }) => ({
+      let assets = activeAddresses.assets.map((asset: { asset: string; accounting: string }) => ({
         asset: asset.asset,
         accounting: asset.accounting,
       }));
 
       // Process debts with accounting
-      const debts = activeAddresses.debts.map((debt: { asset: string; accounting: string }) => ({
+      let debts = activeAddresses.debts.map((debt: { asset: string; accounting: string }) => ({
         asset: debt.asset,
         accounting: debt.accounting,
       }));
+
+      // Filter by search address if provided
+      if (searchAddr) {
+        managerAdapters = managerAdapters.filter(
+          (a: { address: string }) => a.address.toLowerCase() === searchAddr
+        );
+        ownerAdapters = ownerAdapters.filter(
+          (a: { address: string }) => a.address.toLowerCase() === searchAddr
+        );
+        assets = assets.filter(
+          (a: { asset: string; accounting: string }) =>
+            a.asset.toLowerCase() === searchAddr || a.accounting.toLowerCase() === searchAddr
+        );
+        debts = debts.filter(
+          (d: { asset: string; accounting: string }) =>
+            d.asset.toLowerCase() === searchAddr || d.accounting.toLowerCase() === searchAddr
+        );
+      }
 
       return {
         success: true,
         chain,
         environment,
+        ...(searchAddr ? { search: validated.search } : {}),
         managerAdapters,
         ownerAdapters,
         assets,
         debts,
-        note: 'Use the accounting address that matches your asset when creating a vault.',
+        note: searchAddr
+          ? `Filtered results for address ${validated.search}. Use the accounting address that matches your asset.`
+          : 'Use the accounting address that matches your asset when creating a vault. TIP: Pass a "search" address to filter results.',
       };
     } catch (error) {
       throw new SdkError('Failed to get factory addresses', error);

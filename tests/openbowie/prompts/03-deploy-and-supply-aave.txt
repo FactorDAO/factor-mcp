@@ -1,0 +1,1 @@
+I want to create a new USDC vault on Arbitrum. Set up a wallet for me and deploy it. Keep it simple, no fees, then test a deposit of another user B and supply all tokens to AAVE.

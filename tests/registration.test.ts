@@ -17,7 +17,7 @@ const EXPECTED_TOOL_NAMES = [
   'factor_wallet_setup',
   'factor_get_address_book',
 
-  // Vault (13)
+  // Vault (14)
   'factor_get_owned_vaults',
   'factor_get_vault_info',
   'factor_get_shares',
@@ -31,10 +31,28 @@ const EXPECTED_TOOL_NAMES = [
   'factor_get_factory_addresses',
   'factor_validate_vault_config',
   'factor_add_adapter',
+  'factor_vault_templates',
+
+  // Vault Management (12)
+  'factor_set_withdraw_fee',
+  'factor_set_deposit_fee',
+  'factor_set_performance_fee',
+  'factor_set_management_fee',
+  'factor_charge_performance_fee',
+  'factor_set_fee_receiver',
+  'factor_set_max_cap',
+  'factor_set_max_debt_ratio',
+  'factor_set_price_deviation_allowance',
+  'factor_add_vault_manager',
+  'factor_remove_vault_manager',
+  'factor_set_risk_manager',
 
   // Tokenlist (2)
   'factor_get_lending_tokens',
   'factor_add_vault_token',
+
+  // Token (1)
+  'factor_give_approval',
 
   // Lending (4)
   'factor_lend_supply',
@@ -68,11 +86,12 @@ const EXPECTED_TOOL_NAMES = [
   'factor_preview_transaction',
   'factor_get_transaction_status',
 
-  // Foundry (4)
+  // Foundry (5)
   'factor_check_foundry',
   'factor_cast_call',
   'factor_simulate_transaction',
   'factor_decode_error',
+  'factor_run_forge_script',
 ];
 
 describe('Tool Registration', () => {

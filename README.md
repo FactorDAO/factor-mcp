@@ -52,6 +52,7 @@ Environment variables can override JSON config:
 - `DEFAULT_CHAIN` - Default chain (ARBITRUM_ONE, OPTIMISM, BASE, SONIC, MAINNET)
 - `SIMULATION_MODE` - Set to "true" for dry-run mode
 - `LOG_LEVEL` - Logging level (debug, info, warn, error)
+- `FACTOR_ARTIFACTS_DIR` - Persist generated forge scripts to this directory (useful in Docker/ephemeral environments)
 
 ### Running
 

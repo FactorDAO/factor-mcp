@@ -20,6 +20,15 @@ export function createServer(): Server {
       capabilities: {
         tools: {},
       },
+      instructions: `Factor MCP Server — DeFi vault management on Factor Protocol.
+
+Getting started:
+1. Use factor_get_config to check current chain, wallet, and environment.
+2. Use factor_wallet_setup to create or import a wallet if none is configured.
+3. Use factor_vault_templates to get pre-configured vault parameters for the current chain — this is the recommended starting point for creating vaults. It returns ready-to-use createVaultParams and approvalStep for each denominator (USDC, USDT, WETH).
+4. Follow the workflow from factor_vault_templates: approve the token, then create the vault.
+
+If the wallet has no funds and you need to simulate, call factor_create_vault directly (skip approval) — it returns an INSUFFICIENT_ALLOWANCE error with a simulationHint containing a ready-to-use Solidity forge script. Pass that scriptContent directly to factor_run_forge_script. Do NOT try to write forge scripts from scratch — always use the pre-built script from the simulationHint.`,
     }
   );
 

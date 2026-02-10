@@ -3,9 +3,11 @@ import { isAddress, type Address } from 'viem';
 import { configManager } from '../../config/index.js';
 import { getWalletAddress } from '../../wallet/key-manager.js';
 import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
-import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
+import { VaultError, WalletError, SdkError, InsufficientBalanceError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
+import { generateExecuteManagerScript } from '../../templates/index.js';
+import { saveForgeScript } from '../foundry/run-forge-script.js';
 
 const strategyStepSchema = z.object({
   protocol: z.string(),
@@ -131,24 +133,55 @@ export const executeManagerTool = {
         data: executeData.data as `0x${string}`,
       };
 
-      if (configManager.isSimulationMode()) {
-        const gasEstimate = await estimateGas(txParams);
+      // Build a description of the steps for the forge script
+      const stepsDescription = validated.steps
+        .map((s) => `${s.protocol}.${s.action}`)
+        .join(' → ');
 
-        return {
-          success: true,
-          simulationMode: true,
-          vaultAddress,
-          steps: validated.steps,
-          transaction: {
-            to: executeData.to,
-            data: executeData.data,
-          },
-          gasEstimate: {
-            gasLimit: gasEstimate.gasLimit.toString(),
-            totalCostEth: gasEstimate.totalCostEth,
-          },
-          note: 'Simulation mode - transaction was not broadcast. Set SIMULATION_MODE=false to execute.',
-        };
+      if (configManager.isSimulationMode()) {
+        try {
+          const gasEstimate = await estimateGas(txParams);
+
+          return {
+            success: true,
+            simulationMode: true,
+            vaultAddress,
+            steps: validated.steps,
+            transaction: {
+              to: executeData.to,
+              data: executeData.data,
+            },
+            gasEstimate: {
+              gasLimit: gasEstimate.gasLimit.toString(),
+              totalCostEth: gasEstimate.totalCostEth,
+            },
+            note: 'Simulation mode - transaction was not broadcast. Set SIMULATION_MODE=false to execute.',
+          };
+        } catch (error) {
+          // If gas estimation fails (e.g. insufficient balance), include a forge script
+          const forgeScript = generateExecuteManagerScript({
+            vaultAddress: validated.vaultAddress,
+            calldata: txParams.data as string,
+            description: stepsDescription,
+          });
+          const scriptRef = saveForgeScript(forgeScript, 'execute');
+
+          if (error instanceof InsufficientBalanceError) {
+            return {
+              success: false,
+              error: 'INSUFFICIENT_BALANCE',
+              message: `Insufficient balance to estimate gas. Call factor_run_forge_script with the scriptRef below to simulate the strategy.`,
+              vaultAddress,
+              steps: validated.steps,
+              simulationHint: {
+                tool: 'factor_run_forge_script',
+                params: { scriptRef },
+              },
+              note: 'Call factor_run_forge_script with the scriptRef above to simulate the strategy on a forked network.',
+            };
+          }
+          throw error;
+        }
       }
 
       const result = await sendTransaction(txParams, validated.password);

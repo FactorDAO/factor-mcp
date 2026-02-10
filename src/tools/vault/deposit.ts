@@ -1,14 +1,15 @@
 import { z } from 'zod';
-import { isAddress, type Address, encodeFunctionData, parseAbi } from 'viem';
+import { isAddress, type Address, parseAbi } from 'viem';
 import { configManager } from '../../config/index.js';
 import { getWalletAddress } from '../../wallet/key-manager.js';
 import { sendTransaction, estimateGas, getPublicClient, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
+import { generateDepositScript } from '../../templates/index.js';
+import { saveForgeScript } from '../foundry/run-forge-script.js';
 
 const ERC20_ABI = parseAbi([
-  'function approve(address spender, uint256 amount) returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
   'function balanceOf(address account) view returns (uint256)',
 ]);
@@ -117,52 +118,7 @@ export const depositTool = {
         args: [userAddress],
       });
 
-      if (balance < amount) {
-        throw new VaultError(
-          `Insufficient balance. Have: ${balance.toString()}, Need: ${amount.toString()}`
-        );
-      }
-
-      // Check allowance and approve if needed
-      const allowance = await publicClient.readContract({
-        address: assetAddress,
-        abi: ERC20_ABI,
-        functionName: 'allowance',
-        args: [userAddress, vaultAddress],
-      });
-
-      const transactions: Array<{ type: string; hash: string; simulationMode: boolean }> = [];
-
-      if (allowance < amount) {
-        // Need to approve
-        const approveData = encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [vaultAddress, amount],
-        });
-
-        const approveParams: TransactionParams = {
-          to: assetAddress,
-          data: approveData,
-        };
-
-        if (configManager.isSimulationMode()) {
-          transactions.push({
-            type: 'approve',
-            hash: '0x0 (simulation)',
-            simulationMode: true,
-          });
-        } else {
-          const approveResult = await sendTransaction(approveParams, validated.password);
-          transactions.push({
-            type: 'approve',
-            hash: approveResult.hash,
-            simulationMode: false,
-          });
-        }
-      }
-
-      // Build deposit transaction using SDK
+      // Build deposit transaction using SDK (before balance/allowance checks so we can include calldata in hints)
       const depositData = proVault.depositAsset({
         assetAddress,
         amountBN: amount.toString(),
@@ -173,6 +129,71 @@ export const depositTool = {
         to: depositData.to as Address,
         data: depositData.data as `0x${string}`,
       };
+
+      // Check balance
+      if (balance < amount) {
+        const forgeScript = generateDepositScript({
+          vaultAddress: validated.vaultAddress,
+          tokenAddress: validated.assetAddress,
+          amount: amount.toString(),
+          calldata: depositParams.data as string,
+        });
+        const scriptRef = saveForgeScript(forgeScript, 'deposit');
+
+        return {
+          success: false,
+          error: 'INSUFFICIENT_BALANCE',
+          message: `Insufficient balance. Have: ${balance.toString()}, Need: ${amount.toString()}. Use factor_run_forge_script with the scriptRef below to simulate the deposit.`,
+          currentBalance: balance.toString(),
+          requiredAmount: amount.toString(),
+          simulationHint: {
+            tool: 'factor_run_forge_script',
+            params: { scriptRef },
+          },
+          note: 'Call factor_run_forge_script with the scriptRef above to simulate the deposit on a forked network.',
+        };
+      }
+
+      // Check allowance — if insufficient, tell the LLM to use factor_give_approval first
+      const allowance = await publicClient.readContract({
+        address: assetAddress,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [userAddress, vaultAddress],
+      });
+
+      if (allowance < amount) {
+        const forgeScript = generateDepositScript({
+          vaultAddress: validated.vaultAddress,
+          tokenAddress: validated.assetAddress,
+          amount: amount.toString(),
+          calldata: depositParams.data as string,
+        });
+        const scriptRef = saveForgeScript(forgeScript, 'deposit');
+
+        return {
+          success: false,
+          error: 'INSUFFICIENT_ALLOWANCE',
+          message: `Insufficient token allowance. The vault ${vaultAddress} is only approved to spend ${allowance.toString()} but ${amount.toString()} is needed. Call factor_give_approval first to approve the token.`,
+          currentAllowance: allowance.toString(),
+          requiredAmount: amount.toString(),
+          approvalHint: {
+            tool: 'factor_give_approval',
+            params: {
+              tokenAddress: assetAddress,
+              spenderAddress: vaultAddress,
+              amount: 'max',
+            },
+          },
+          simulationHint: {
+            tool: 'factor_run_forge_script',
+            params: { scriptRef },
+          },
+          note: 'Call factor_give_approval then retry, or call factor_run_forge_script with the scriptRef to simulate the deposit on a forked network.',
+        };
+      }
+
+      const transactions: Array<{ type: string; hash: string; simulationMode: boolean }> = [];
 
       if (configManager.isSimulationMode()) {
         const gasEstimate = await estimateGas(depositParams);

@@ -35,7 +35,7 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - **production** - Production contracts
 - **testing** - Testing/staging contracts (default for development)
 
-## Available Tools (45 total)
+## Available Tools (59 total)
 
 ### Configuration (5 tools)
 - `factor_get_config` - View current configuration (chain, RPC, wallet, simulation mode, environment)
@@ -48,7 +48,10 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_get_lending_tokens` - Look up lending token info (aTokens, debt tokens, underlying assets) for Aave, Compound V3, or Morpho from the tokenlist
 - `factor_add_vault_token` - Add an asset or debt token to a vault with the correct accounting adapter (uses AssetDebtAdapter via executeByManager)
 
-### Vault Operations (13 tools)
+### Token (1 tool)
+- `factor_give_approval` - Approve an ERC20 token for spending by a spender (vault, factory). Must be called before deposits or vault creation if allowance is insufficient. Supports "max" for unlimited approval.
+
+### Vault Operations (14 tools)
 - `factor_get_owned_vaults` - List vaults owned by an address
 - `factor_get_vault_info` - Get detailed vault information (assets, fees, managers, adapters)
 - `factor_get_shares` - Get user's shares, total supply, and price per share
@@ -62,6 +65,21 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_get_factory_addresses` - Get whitelisted assets, adapters, and accounting addresses from factory
 - `factor_validate_vault_config` - Validate vault configuration before deployment
 - `factor_add_adapter` - Add a manager adapter to a vault
+- `factor_vault_templates` - Get pre-configured vault templates for the current chain. Returns ready-to-use parameters for `factor_create_vault` with correct token addresses and accounting adapters. Available denominators: USDC, USDT, WETH (varies by chain). When `lendingProtocol` is specified (aave, compoundV3, morpho), templates include the protocol adapter, lending tokens (aToken/cToken/debt), and accounting addresses baked into `createVaultParams` — the vault deploys fully ready for lending in a single transaction.
+
+### Vault Management (12 tools)
+- `factor_set_withdraw_fee` - Set withdraw fee in basis points (0-10000)
+- `factor_set_deposit_fee` - Set deposit fee in basis points (0-10000)
+- `factor_set_performance_fee` - Set performance fee in basis points (0-10000)
+- `factor_set_management_fee` - Set annual management fee in basis points (0-10000)
+- `factor_charge_performance_fee` - Charge accrued performance fee (mints fee shares to receiver)
+- `factor_set_fee_receiver` - Set the address that receives vault fees
+- `factor_set_max_cap` - Set maximum deposit cap in base units (0 = no cap)
+- `factor_set_max_debt_ratio` - Set maximum debt ratio in basis points (0-10000)
+- `factor_set_price_deviation_allowance` - Set cumulative price deviation allowance in basis points
+- `factor_add_vault_manager` - Add a manager address to the vault
+- `factor_remove_vault_manager` - Remove a manager address from the vault
+- `factor_set_risk_manager` - Set the risk manager address
 
 ### Lending Operations (4 tools)
 - `factor_lend_supply` - Supply/deposit assets to a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2). Supports Morpho collateral operations.
@@ -98,11 +116,12 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_preview_transaction` - Preview with gas estimate
 - `factor_get_transaction_status` - Check transaction status
 
-### Foundry Tools (4 tools) - *Requires Foundry*
+### Foundry Tools (5 tools) - *Requires Foundry*
 - `factor_check_foundry` - Check if Foundry suite (cast, anvil, forge) and Rust are installed
 - `factor_cast_call` - Execute read-only contract calls using `cast`
-- `factor_simulate_transaction` - Simulate transactions on forked network using `anvil`
+- `factor_simulate_transaction` - Simulate transactions on forked network using `anvil`. Supports `balanceOverrides` to set ETH balances before execution.
 - `factor_decode_error` - Decode contract errors and revert reasons
+- `factor_run_forge_script` - Run a Solidity forge script on a forked network. Write a script using forge-std cheatcodes (`vm.deal()` for ETH, `deal(token,to,amount)` for ERC20, `vm.startBroadcast()`, `console.log`) and pass it as `scriptContent`. Handles project setup, compilation, and execution automatically.
 
 ## SDK Adapter IDs (for factor_execute_manager and factor_build_strategy)
 
@@ -182,7 +201,8 @@ These are the SDK property names used as `protocol`/`adapter` parameter values:
 ```
 1. factor_get_vault_info to check vault details and valid deposit assets
 2. factor_preview_deposit to see expected shares
-3. factor_deposit to execute (needs password if encrypted)
+3. factor_give_approval to approve the token for the vault (if allowance is insufficient)
+4. factor_deposit to execute (needs password if encrypted)
 ```
 
 ### Withdraw from Vault
@@ -329,6 +349,28 @@ Collect fees:       factor_lp_collect_fees with protocol, tokenId
 6. factor_lend_withdraw - Withdraw the USDC collateral (use amount "all" to withdraw fully)
 ```
 
+### Manage Vault Configuration
+```
+Fee management (owner only):
+  factor_set_deposit_fee with vaultAddress, feeBps (0-10000)
+  factor_set_withdraw_fee with vaultAddress, feeBps (0-10000)
+  factor_set_performance_fee with vaultAddress, feeBps (0-10000)
+  factor_set_management_fee with vaultAddress, feeBps (0-10000)
+  factor_charge_performance_fee with vaultAddress (callable by anyone)
+  factor_set_fee_receiver with vaultAddress, receiverAddress
+
+Risk management (owner only):
+  factor_set_max_cap with vaultAddress, maxCap (base units, 0 = no cap)
+  factor_set_max_debt_ratio with vaultAddress, maxDebtRatioBps (0-10000)
+  factor_set_price_deviation_allowance with vaultAddress, allowanceBps (0-10000)
+
+Manager management (owner only):
+  factor_add_vault_manager with vaultAddress, managerAddress
+  factor_remove_vault_manager with vaultAddress, managerAddress
+  factor_set_risk_manager with vaultAddress, managerAddress
+```
+**Note**: These are direct vault calls (NOT wrapped in executeByManager). All fee/risk/manager params use basis points where 10000 = 100%.
+
 ### Add an Adapter to a Vault
 ```
 1. factor_get_factory_addresses to find whitelisted adapter addresses
@@ -347,11 +389,56 @@ Collect fees:       factor_lp_collect_fees with protocol, tokenId
 
 ### Create a New Vault
 ```
-1. factor_get_factory_addresses to see available assets and adapters
-2. factor_create_vault with name, symbol, assetDenominatorAddress
+1. factor_vault_templates to get pre-configured vault parameters for the current chain
+   - Returns ready-to-use createVaultParams and approvalStep for each denominator (USDC, USDT, WETH)
+2. factor_give_approval with the approvalStep params to approve the denominator token for the factory
+3. factor_create_vault with the createVaultParams (customize name/symbol as needed)
    - Accounting adapters are auto-detected from factory
    - Validation runs before deployment to catch issues
-3. Use factor_get_transaction_status to check the result
+   - If allowance is insufficient, returns an INSUFFICIENT_ALLOWANCE error with approvalHint
+4. Use factor_get_transaction_status to check the result
+```
+
+### Create a Vault with Lending (Aave — Single Transaction)
+Use `factor_vault_templates` with `lendingProtocol: "aave"` to get a template with the Aave adapter, aToken, and debt token pre-configured. The vault deploys fully ready for lending — no separate adapter/token registration needed.
+```
+1. factor_vault_templates with lendingProtocol: "aave", denominator: "USDC"
+   → Returns createVaultParams with initialManagerAdapters (Aave adapter),
+     initialAssetAddresses (USDC + aToken), initialDebtAddresses (variableDebtToken),
+     and postDeploySteps with exact tool calls
+2. factor_give_approval with the approvalStep params
+3. factor_create_vault with the createVaultParams
+   → Vault deploys with Aave adapter + aToken + debtToken already configured
+4. factor_deposit to add funds to the vault
+5. factor_lend_supply with protocol: "aave" to supply to Aave
+```
+
+### Create a Vault with Lending (Compound V3 — Single Transaction + Market Registration)
+Use `factor_vault_templates` with `lendingProtocol: "compoundV3"`. The vault deploys with both Compound V3 adapters and cToken pre-configured. One post-deploy step (market registration) is still required before supply.
+```
+1. factor_vault_templates with lendingProtocol: "compoundV3", denominator: "USDC"
+   → Returns createVaultParams with initialManagerAdapters (Compound V3 adapter + market adapter),
+     initialAssetAddresses (USDC + cToken), and postDeploySteps
+2. factor_give_approval with the approvalStep params
+3. factor_create_vault with the createVaultParams
+4. factor_execute_manager with the registerMarket step from postDeploySteps (REQUIRED before supply)
+5. factor_deposit to add funds to the vault
+6. factor_lend_supply with protocol: "compoundV3" to supply
+```
+
+### Create a Vault with Lending (Morpho — Single Transaction + Market Selection)
+Use `factor_vault_templates` with `lendingProtocol: "morpho"`. The vault deploys with both Morpho adapters and all relevant tokens pre-registered with Chainlink accounting. The user must choose a market before supply.
+```
+1. factor_vault_templates with lendingProtocol: "morpho", denominator: "USDC"
+   → Returns createVaultParams with initialManagerAdapters (Morpho adapter + market adapter),
+     initialAssetAddresses (all related tokens with Chainlink accounting),
+     lending.availableMarkets (list of markets to choose from), and postDeploySteps
+2. Present lending.availableMarkets to the user — NEVER auto-select a Morpho market
+3. factor_give_approval with the approvalStep params
+4. factor_create_vault with the createVaultParams
+5. factor_execute_manager with addMarketToAssetAndDebt for the user's chosen marketId (REQUIRED)
+6. factor_deposit to add funds to the vault
+7. factor_lend_supply with protocol: "morpho", marketId: "<chosen>" to supply
 ```
 
 ### Debug a Failed Transaction (Requires Foundry)
@@ -359,6 +446,23 @@ Collect fees:       factor_lp_collect_fees with protocol, tokenId
 1. factor_check_foundry to verify Foundry is installed
 2. factor_simulate_transaction to test on forked network
 3. factor_decode_error to understand revert reasons
+```
+
+### Fork Simulation with Forge Scripts
+When a write operation fails with `INSUFFICIENT_BALANCE` or `INSUFFICIENT_ALLOWANCE`, the error includes a `simulationHint` pointing to `factor_run_forge_script` with a ready-to-use Solidity script. The script uses forge-std cheatcodes to set both ETH and ERC20 balances, then executes the full flow on a forked network.
+```
+1. Call any write tool (factor_create_vault, factor_deposit, etc.)
+   → If wallet has insufficient balance/allowance, error returns simulationHint with scriptContent
+2. factor_run_forge_script with the provided scriptContent
+   → Forks the network, sets balances via deal(), executes all transactions
+3. Review simulation result (success/revert, gas used, traces)
+```
+
+### Fork Simulation with Balance Overrides (Simple)
+For simpler cases, `factor_simulate_transaction` can fork the network and override ETH balances before executing raw calldata.
+```
+1. factor_simulate_transaction with balanceOverrides and steps
+2. Review simulation result
 ```
 
 ## Configuration
@@ -410,6 +514,7 @@ Wallet lookup checks both locations automatically (factor-mcp first, then Foundr
 - `FACTOR_ENVIRONMENT` - Set to `production`, `staging`, or `testing`
 - `SIMULATION_MODE` - Set to `true` or `false`
 - `LOG_LEVEL` - Set to `debug`, `info`, `warn`, or `error`
+- `FACTOR_ARTIFACTS_DIR` - Directory to persist forge scripts generated by simulation hints (e.g. `/bowie/artifacts` in Docker). When set, scripts saved via `scriptRef` are also copied to `<FACTOR_ARTIFACTS_DIR>/forge-scripts/`. Useful for inspecting generated Solidity after the MCP process ends.
 
 ## SDK Integration
 
