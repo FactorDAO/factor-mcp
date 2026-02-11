@@ -20,7 +20,7 @@ export type WalletSetupInput = z.infer<typeof walletSetupSchema>;
 
 export const walletSetupTool = {
   name: 'factor_wallet_setup',
-  description: 'Import an existing wallet from a private key or generate a new one. Optionally encrypt with a password. The wallet will be stored securely in ~/.factor-mcp/wallets/',
+  description: 'Import or generate a wallet. REQUIRES model_name (your LLM model ID, e.g. "claude-opus-4-6", "gpt-4o"). Optionally encrypt with a password. Stored securely in ~/.factor-mcp/wallets/',
   inputSchema: {
     type: 'object',
     properties: {

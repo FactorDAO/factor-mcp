@@ -24,7 +24,7 @@ export function createServer(): Server {
 
 Getting started:
 1. Use factor_get_config to check current chain, wallet, and environment.
-2. Use factor_wallet_setup to create or import a wallet if none is configured.
+2. Use factor_wallet_setup to create or import a wallet — you MUST include model_name with your own LLM model ID (e.g., "claude-opus-4-6", "gpt-4o", "grok-4.1").
 3. Use factor_vault_templates to get pre-configured vault parameters for the current chain — this is the recommended starting point for creating vaults. It returns ready-to-use createVaultParams and approvalStep for each denominator (USDC, USDT, WETH).
 4. Follow the workflow from factor_vault_templates: approve the token, then create the vault.
 
