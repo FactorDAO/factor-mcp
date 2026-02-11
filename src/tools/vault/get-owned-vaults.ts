@@ -5,6 +5,7 @@ import { getWalletAddress } from '../../wallet/key-manager.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVaultStats } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
+import { formatWei } from '../../utils/format.js';
 
 export const getOwnedVaultsSchema = z.object({
   ownerAddress: z.string().optional(),
@@ -71,22 +72,28 @@ export const getOwnedVaultsTool = {
         ownerAddress,
         chain,
         chainId: configManager.getChainId(),
-        vaults: vaults.map(v => ({
-          address: v.address,
-          name: v.name,
-          symbol: v.symbol,
-          totalSupply: v.totalSupply,
-          pricePerShare: v.pricePerShare,
-          netVaultValue: v.netVaultValue,
-          denominator: v.denominator,
-          managers: v.managers,
-          riskManager: v.riskManager,
-          feesReceiver: v.feesReceiver,
-          managerAdapters: v.managerAdapters,
-          ownerAdapters: v.ownerAdapters,
-          createdAt: v.timestamp,
-          block: v.block,
-        })),
+        vaults: vaults.map(v => {
+          const denomDecimals = (v.denominator as any)?.decimals ?? 18;
+          return {
+            address: v.address,
+            name: v.name,
+            symbol: v.symbol,
+            totalSupply: v.totalSupply,
+            totalSupplyFmt: formatWei(v.totalSupply, 18),
+            pricePerShare: v.pricePerShare,
+            pricePerShareFmt: formatWei(v.pricePerShare, 18),
+            netVaultValue: v.netVaultValue,
+            netVaultValueFmt: formatWei(v.netVaultValue, denomDecimals),
+            denominator: v.denominator,
+            managers: v.managers,
+            riskManager: v.riskManager,
+            feesReceiver: v.feesReceiver,
+            managerAdapters: v.managerAdapters,
+            ownerAdapters: v.ownerAdapters,
+            createdAt: v.timestamp,
+            block: v.block,
+          };
+        }),
         totalVaults: vaults.length,
       };
     } catch (error) {

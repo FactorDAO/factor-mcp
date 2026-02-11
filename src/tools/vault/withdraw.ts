@@ -8,6 +8,7 @@ import { StudioProVault } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { generateWithdrawScript } from '../../templates/index.js';
 import { saveForgeScript } from '../foundry/run-forge-script.js';
+import { formatWei } from '../../utils/format.js';
 
 export const withdrawSchema = z.object({
   vaultAddress: z.string(),
@@ -119,7 +120,9 @@ export const withdrawTool = {
           error: 'INSUFFICIENT_SHARES',
           message: `Insufficient shares. Have: ${balance.toString()}, Need: ${shares.toString()}. Call factor_run_forge_script with the scriptRef below to simulate the withdrawal.`,
           currentBalance: balance.toString(),
+          currentBalanceFmt: formatWei(balance.toString(), 18),
           requiredShares: shares.toString(),
+          requiredSharesFmt: formatWei(shares.toString(), 18),
           simulationHint: {
             tool: 'factor_run_forge_script',
             params: { scriptRef },
@@ -137,6 +140,7 @@ export const withdrawTool = {
           vault: vaultAddress,
           withdrawal: {
             shares: validated.shares,
+            sharesFmt: formatWei(validated.shares, 18),
             receiver: userAddress,
           },
           gasEstimate: {
@@ -155,6 +159,7 @@ export const withdrawTool = {
         vault: vaultAddress,
         withdrawal: {
           shares: validated.shares,
+          sharesFmt: formatWei(validated.shares, 18),
           receiver: userAddress,
           transactionHash: result.hash,
         },

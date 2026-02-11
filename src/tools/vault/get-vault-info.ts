@@ -4,6 +4,8 @@ import { configManager } from '../../config/index.js';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StudioProVaultStats } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
+import { formatWei, formatBps, getTokenDecimals } from '../../utils/format.js';
+import { getPublicClient } from '../../wallet/signer.js';
 
 export const getVaultInfoSchema = z.object({
   vaultAddress: z.string(),
@@ -71,6 +73,26 @@ export const getVaultInfoTool = {
         proVault.getPricePerShare(),
       ]);
 
+      // Read denominator decimals for formatting token amounts (maxCap, depositMinimum, etc.)
+      let denominatorDecimals = 18;
+      try {
+        const denominatorAddress = vaultData.metadata.assetDenominatorAddress;
+        if (denominatorAddress) {
+          const publicClient = getPublicClient();
+          denominatorDecimals = await getTokenDecimals(publicClient, denominatorAddress as Address);
+        }
+      } catch {
+        // Fall back to 18 decimals
+      }
+
+      const maxCapRaw = vaultData.riskManagement.maxCapBN?.toString();
+      const maxDebtRatioRaw = vaultData.riskManagement.maxDebtRatioBN?.toString();
+      const cumulativePriceDeviationAllowanceRaw = vaultData.riskManagement.cumulativePriceDeviationAllowanceBN?.toString();
+      const depositFeeRaw = vaultData.fees.depositBN?.toString();
+      const withdrawFeeRaw = vaultData.fees.withdrawBN?.toString();
+      const managementFeeRaw = vaultData.fees.managementBN?.toString();
+      const performanceFeeRaw = vaultData.fees.performanceBN?.toString();
+
       return {
         vault: {
           address: vaultAddress,
@@ -88,8 +110,10 @@ export const getVaultInfoTool = {
             formatted: formatUnits(pricePerShare, 18),
           },
           netVaultValue: vaultSubgraph?.netVaultValue || '0',
+          netVaultValueFmt: formatWei(vaultSubgraph?.netVaultValue || '0', denominatorDecimals),
           underlyingAssets: vaultData.financial.underlyingAssets,
           denominator: vaultSubgraph?.denominator,
+          denominatorDecimals,
         },
         config: {
           upgradeable: vaultData.config.upgradeable,
@@ -97,16 +121,23 @@ export const getVaultInfoTool = {
           cooldownTime: vaultData.config.cooldownTime,
         },
         riskManagement: {
-          maxCap: vaultData.riskManagement.maxCapBN?.toString(),
-          maxDebtRatio: vaultData.riskManagement.maxDebtRatioBN?.toString(),
-          cumulativePriceDeviationAllowance: vaultData.riskManagement.cumulativePriceDeviationAllowanceBN?.toString(),
+          maxCap: maxCapRaw,
+          maxCapFmt: formatWei(maxCapRaw, denominatorDecimals),
+          maxDebtRatio: maxDebtRatioRaw,
+          maxDebtRatioFmt: formatBps(maxDebtRatioRaw),
+          cumulativePriceDeviationAllowance: cumulativePriceDeviationAllowanceRaw,
+          cumulativePriceDeviationAllowanceFmt: formatBps(cumulativePriceDeviationAllowanceRaw),
         },
         fees: {
           receiver: vaultSubgraph?.feesReceiver,
-          deposit: vaultData.fees.depositBN?.toString(),
-          withdraw: vaultData.fees.withdrawBN?.toString(),
-          management: vaultData.fees.managementBN?.toString(),
-          performance: vaultData.fees.performanceBN?.toString(),
+          deposit: depositFeeRaw,
+          depositFmt: formatBps(depositFeeRaw),
+          withdraw: withdrawFeeRaw,
+          withdrawFmt: formatBps(withdrawFeeRaw),
+          management: managementFeeRaw,
+          managementFmt: formatBps(managementFeeRaw),
+          performance: performanceFeeRaw,
+          performanceFmt: formatBps(performanceFeeRaw),
         },
         access: {
           managers: vaultSubgraph?.managers || [],
@@ -125,8 +156,14 @@ export const getVaultInfoTool = {
         },
         depositSettings: {
           minimum: vaultSubgraph?.depositMinimum,
+          minimumFmt: typeof vaultSubgraph?.depositMinimum === 'string'
+            ? formatWei(vaultSubgraph.depositMinimum, denominatorDecimals)
+            : undefined,
           minimumEnabled: vaultSubgraph?.depositMinimumEnabled,
           netValueLimit: vaultSubgraph?.depositNetValueLimit,
+          netValueLimitFmt: vaultSubgraph?.depositNetValueLimit != null
+            ? formatWei(String(vaultSubgraph.depositNetValueLimit), denominatorDecimals)
+            : undefined,
           netValueLimitEnabled: vaultSubgraph?.depositNetValueLimitEnabled,
         },
         chain,

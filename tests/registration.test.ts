@@ -63,8 +63,9 @@ const EXPECTED_TOOL_NAMES = [
   // Strategy (1)
   'factor_list_adapters',
 
-  // Swap (3)
+  // Swap (4)
   'factor_swap',
+  'factor_swap_exact_output',
   'factor_swap_openocean',
   'factor_swap_pendle',
 

@@ -158,13 +158,11 @@ Add to your Claude Code config (`~/.config/claude-code/config.json` or MCP setti
 | `factor_lp_remove_liquidity` | Remove liquidity from position |
 | `factor_lp_collect_fees` | Collect accumulated trading fees |
 
-### Yield & Perp Operations (3 tools)
+### Yield Operations (1 tool)
 
 | Tool | Description |
 |------|-------------|
-| `factor_gmx` | GMX staking (stake, unstake, claim) |
 | `factor_pendle_lp` | Pendle LP (add/remove liquidity, collect fees) |
-| `factor_penpie` | Penpie yield (deposit/withdraw Pendle LP tokens) |
 
 ### Flash Loan (1 tool)
 
@@ -370,16 +368,6 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 - [x] Borrow
 - [x] Repay
 
-### Lending — Lodestar
-
-- [ ] Supply (`mintBN`)
-- [ ] Withdraw (`redeemBN`)
-
-### Lending — Tender
-
-- [ ] Supply (`mintBN`)
-- [ ] Withdraw (`redeemBN`)
-
 ### DEX — Uniswap V3
 
 - [x] Exact input single swap (`factor_swap`)
@@ -433,48 +421,6 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 - [x] Add liquidity to Pendle market
 - [x] Remove liquidity
 - [x] Collect fees/rewards
-
-### Yield — Penpie
-
-- [x] Deposit Pendle LP tokens
-- [x] Deposit all
-- [x] Withdraw
-- [x] Withdraw all
-
-### Yield — GMX
-
-- [x] Stake GMX/esGMX
-- [x] Stake all
-- [x] Unstake
-- [x] Claim rewards
-
-### Yield — Pirex
-
-- [ ] Pirex GMX wrapper operations (Arbitrum)
-
-### Yield — VLP
-
-- [ ] VLP yield operations
-
-### Yield — Mux
-
-- [ ] Mux yield operations
-
-### Yield — Umami
-
-- [ ] Umami yield vault operations (Arbitrum)
-
-### Yield — Generic Yield Vault
-
-- [ ] Generic yield vault deposit/withdraw
-
-### Perps — GNS (Gains Network)
-
-- [ ] Gains Network perpetual operations (Arbitrum)
-
-### Perps — GLP V2
-
-- [ ] GLP V2 operations (Arbitrum)
 
 ### Flash Loans
 
@@ -573,6 +519,54 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 
 ---
 
+### Pro Adapter Availability
+
+Only `_pro` adapters are used by the MCP server. Adapters without any deployment are excluded from the roadmap.
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
+| **Lending** | | | | |
+| Aave | ✅ | ✅ | ✅ | ✅ |
+| Compound V3 | ✅ | ✅ | ✅ | ✅ |
+| Compound V3 Market | ✅ | ✅ | ✅ | ✅ |
+| Morpho | - | - | ✅ | ✅ |
+| Morpho Market | - | - | ✅ | ✅ |
+| Silo V1 | ✅ | ✅ | - | ✅ |
+| Silo V2 | - | ✅ | - | - |
+| Silo V2 Market | - | ✅ | - | - |
+| **DEX** | | | | |
+| Uniswap | ✅ | ✅ | ✅ | ✅ |
+| OpenOcean | ✅ | ✅ | ✅ | ✅ |
+| Pendle PY (PT/YT swaps) | ✅ | ✅ | ✅ | ✅ |
+| Pendle PY Market | ✅ | ✅ | ✅ | ✅ |
+| Aqua | - | - | - | ✅ |
+| **LP** | | | | |
+| Uniswap V3 LP | - | ✅ | - | ✅ |
+| Camelot V3 LP | - | ✅ | - | - |
+| Aerodrome LP | - | - | - | ✅ |
+| **Yield** | | | | |
+| Pendle | ✅ | ✅ | - | ✅ |
+| **Flash Loans** | | | | |
+| Balancer FL | ✅ | ✅ | ✅ | ✅ |
+| Morpho FL | - | - | - | ✅ |
+| **Infrastructure** | | | | |
+| Adapter Management | ✅ | ✅ | ✅ | ✅ |
+| Asset/Debt | ✅ | ✅ | ✅ | ✅ |
+| Deposit Policy | ✅ | - | - | ✅ |
+| Chainlink Accounting | ✅ | ✅ | ✅ | ✅ |
+| Chainlink Pegged Accounting | ✅ | ✅ | ✅ | ✅ |
+| Aave Accounting | ✅ | ✅ | ✅ | ✅ |
+| Pendle Accounting | - | ✅ | - | ✅ |
+| Pendle PY Accounting | ✅ | - | ✅ | - |
+| Compound V3 Collateral Accounting | ✅ | ✅ | - | ✅ |
+| Compound V3 Debt Accounting | ✅ | ✅ | - | ✅ |
+| Silo V2 Collateral Accounting | - | ✅ | - | - |
+| Silo V2 Debt Accounting | - | ✅ | - | - |
+| Gelato | ✅ | ✅ | ✅ | ✅ |
+| Boost | ✅ | ✅ | ✅ | ✅ |
+
+> **Note**: Ethereum Mainnet has no pro adapters deployed (only factory + Chainlink accounting in testing).
+
 ### Coverage Summary
 
 | Category | Implemented | Total | Coverage |
@@ -587,11 +581,9 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 | Vault Simulation | 0 | 2 | 0% |
 | Token & Approval | 3 | 4 | 75% |
 | Lending (Aave, Compound, Morpho, Silo) | 16 | 17 | 94% |
-| Lending (Lodestar, Tender) | 0 | 4 | 0% |
-| DEX Swaps | 12 | 12 | 100% |
+| DEX Swaps | 12 | 13 | 92% |
 | LP Operations | 12 | 14 | 86% |
-| Yield & Staking | 8 | 13 | 62% |
-| Perps (GNS, GLP V2) | 0 | 2 | 0% |
+| Yield (Pendle) | 3 | 3 | 100% |
 | Flash Loans | 2 | 3 | 67% |
 | Strategy Builder | 2 | 14 | 14% |
 | Utility Adapters | 0 | 9 | 0% |
@@ -600,7 +592,7 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 | Scale System | 0 | 14 | 0% |
 | Bribe System | 0 | 4 | 0% |
 | Transaction & Debugging | 9 | 9 | 100% |
-| **TOTAL** | **~104** | **~191** | **~54%** |
+| **TOTAL** | **~93** | **~176** | **~53%** |
 
 ---
 
@@ -632,14 +624,8 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 - [ ] Vault simulation (deposit, fees)
 
 **P3 — Additional Protocols**
-- [ ] Lodestar lending
-- [ ] Tender lending
-- [ ] Aqua DEX swaps
-- [ ] GNS (Gains Network) perps
-- [ ] GLP V2 operations
-- [ ] Pirex yield
-- [ ] Umami yield vaults
-- [ ] VLP / Mux yield
+- [ ] Aqua DEX swaps (Base testing only)
+- [ ] Morpho flash loans (Base testing only)
 
 **P4 — Tokenomics & Governance**
 - [ ] Boost system (rewards, whitelist, redemption)

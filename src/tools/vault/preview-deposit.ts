@@ -6,6 +6,7 @@ import { VaultError, SdkError } from '../../utils/errors.js';
 import { StudioProVault } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { getPublicClient } from '../../wallet/signer.js';
+import { formatWei, getTokenDecimals } from '../../utils/format.js';
 
 export const previewDepositSchema = z.object({
   vaultAddress: z.string(),
@@ -100,6 +101,10 @@ export const previewDepositTool = {
         assetAmountBN: amount.toString(),
       });
 
+      // Read asset token decimals for formatting
+      const publicClient = getPublicClient();
+      const assetDecimals = await getTokenDecimals(publicClient, assetAddress);
+
       // Get user balance if possible
       let userBalance: string | undefined;
       let hasEnoughBalance: boolean | undefined;
@@ -119,7 +124,6 @@ export const previewDepositTool = {
         }
 
         if (userAddress) {
-          const publicClient = getPublicClient();
           const balance = await publicClient.readContract({
             address: assetAddress,
             abi: [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' }],
@@ -133,14 +137,20 @@ export const previewDepositTool = {
         // Ignore balance check errors
       }
 
+      const sharesReceived = preview.shareAmountBN || '0';
+
       return {
         vault: vaultAddress,
         asset: assetAddress,
+        assetDecimals,
         deposit: {
           amount: validated.amount,
-          sharesReceived: preview.shareAmountBN || '0',
+          amountFmt: formatWei(validated.amount, assetDecimals),
+          sharesReceived,
+          sharesReceivedFmt: formatWei(sharesReceived, 18),
         },
         userBalance,
+        userBalanceFmt: formatWei(userBalance, assetDecimals),
         hasEnoughBalance,
         chain,
         note: 'This is a preview. Use factor_deposit to execute the actual deposit.',

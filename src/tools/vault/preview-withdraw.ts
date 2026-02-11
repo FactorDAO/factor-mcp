@@ -6,6 +6,7 @@ import { VaultError, SdkError } from '../../utils/errors.js';
 import { StudioProVault } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { getPublicClient } from '../../wallet/signer.js';
+import { formatWei, getTokenDecimals } from '../../utils/format.js';
 
 export const previewWithdrawSchema = z.object({
   vaultAddress: z.string(),
@@ -82,6 +83,10 @@ export const previewWithdrawTool = {
       const vaultData = await proVault.getVaultData();
       const assetAddress = vaultData.metadata.assetDenominatorAddress;
 
+      // Read denominator decimals for formatting
+      const publicClient = getPublicClient();
+      const denominatorDecimals = await getTokenDecimals(publicClient, assetAddress as Address);
+
       // Preview withdraw
       const preview = await proVault.previewWithdraw({
         assetAddress,
@@ -115,17 +120,23 @@ export const previewWithdrawTool = {
         // Ignore balance check errors
       }
 
+      const assetsReceived = preview.assetAmountBN || '0';
+
       return {
         vault: {
           address: vaultAddress,
           name: vaultData.metadata.name,
           symbol: vaultData.metadata.symbol,
         },
+        denominatorDecimals,
         withdrawal: {
           shares: validated.shares,
-          assetsReceived: preview.assetAmountBN || '0',
+          sharesFmt: formatWei(validated.shares, 18),
+          assetsReceived,
+          assetsReceivedFmt: formatWei(assetsReceived, denominatorDecimals),
         },
         userShares,
+        userSharesFmt: formatWei(userShares, 18),
         hasEnoughShares,
         chain,
         note: 'This is a preview. Use factor_withdraw to execute the actual withdrawal.',

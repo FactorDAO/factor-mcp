@@ -4,6 +4,7 @@ import { configManager } from '../../config/index.js';
 import { getWalletAddress } from '../../wallet/key-manager.js';
 import { sendTransaction, getPublicClient, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
+import { formatWei } from '../../utils/format.js';
 
 const ERC20_ABI = parseAbi([
   'function approve(address spender, uint256 amount) returns (bool)',
@@ -110,7 +111,9 @@ export const approveTool = {
           tokenSymbol,
           spender: spenderAddress,
           currentAllowance: currentAllowance.toString(),
+          currentAllowanceFmt: formatWei(currentAllowance.toString(), tokenDecimals),
           requestedAmount: validated.amount === 'max' ? 'max (unlimited)' : validated.amount,
+          requestedAmountFmt: validated.amount === 'max' ? 'max (unlimited)' : formatWei(validated.amount, tokenDecimals),
           note: `Token ${tokenSymbol} already has sufficient allowance for ${spenderAddress}. No transaction needed.`,
         };
       }
@@ -135,7 +138,9 @@ export const approveTool = {
           tokenSymbol,
           spender: spenderAddress,
           previousAllowance: currentAllowance.toString(),
+          previousAllowanceFmt: formatWei(currentAllowance.toString(), tokenDecimals),
           newAllowance: validated.amount === 'max' ? 'max (unlimited)' : validated.amount,
+          newAllowanceFmt: validated.amount === 'max' ? 'max (unlimited)' : formatWei(validated.amount, tokenDecimals),
           note: 'Simulation mode - approval was not broadcast. Set SIMULATION_MODE=false to execute.',
         };
       }
@@ -149,7 +154,9 @@ export const approveTool = {
         tokenSymbol,
         spender: spenderAddress,
         previousAllowance: currentAllowance.toString(),
+        previousAllowanceFmt: formatWei(currentAllowance.toString(), tokenDecimals),
         newAllowance: validated.amount === 'max' ? 'max (unlimited)' : validated.amount,
+        newAllowanceFmt: validated.amount === 'max' ? 'max (unlimited)' : formatWei(validated.amount, tokenDecimals),
         transactionHash: result.hash,
         chain: configManager.getConfig().chain,
         note: `Approved ${tokenSymbol} for spending by ${spenderAddress}. You can now proceed with the deposit or other operation.`,

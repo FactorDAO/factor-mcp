@@ -8,6 +8,7 @@ import { StudioProVault } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { generateDepositScript } from '../../templates/index.js';
 import { saveForgeScript } from '../foundry/run-forge-script.js';
+import { formatWei, getTokenDecimals } from '../../utils/format.js';
 
 const ERC20_ABI = parseAbi([
   'function allowance(address owner, address spender) view returns (uint256)',
@@ -110,6 +111,9 @@ export const depositTool = {
 
       const publicClient = getPublicClient();
 
+      // Read asset token decimals for formatting
+      const assetDecimals = await getTokenDecimals(publicClient, assetAddress);
+
       // Check user balance
       const balance = await publicClient.readContract({
         address: assetAddress,
@@ -145,7 +149,9 @@ export const depositTool = {
           error: 'INSUFFICIENT_BALANCE',
           message: `Insufficient balance. Have: ${balance.toString()}, Need: ${amount.toString()}. Use factor_run_forge_script with the scriptRef below to simulate the deposit.`,
           currentBalance: balance.toString(),
+          currentBalanceFmt: formatWei(balance.toString(), assetDecimals),
           requiredAmount: amount.toString(),
+          requiredAmountFmt: formatWei(amount.toString(), assetDecimals),
           simulationHint: {
             tool: 'factor_run_forge_script',
             params: { scriptRef },
@@ -176,7 +182,9 @@ export const depositTool = {
           error: 'INSUFFICIENT_ALLOWANCE',
           message: `Insufficient token allowance. The vault ${vaultAddress} is only approved to spend ${allowance.toString()} but ${amount.toString()} is needed. Call factor_give_approval first to approve the token.`,
           currentAllowance: allowance.toString(),
+          currentAllowanceFmt: formatWei(allowance.toString(), assetDecimals),
           requiredAmount: amount.toString(),
+          requiredAmountFmt: formatWei(amount.toString(), assetDecimals),
           approvalHint: {
             tool: 'factor_give_approval',
             params: {
@@ -210,6 +218,7 @@ export const depositTool = {
           asset: assetAddress,
           deposit: {
             amount: validated.amount,
+            amountFmt: formatWei(validated.amount, assetDecimals),
             from: userAddress,
           },
           transactions,
@@ -235,6 +244,7 @@ export const depositTool = {
         asset: assetAddress,
         deposit: {
           amount: validated.amount,
+          amountFmt: formatWei(validated.amount, assetDecimals),
           from: userAddress,
         },
         transactions,

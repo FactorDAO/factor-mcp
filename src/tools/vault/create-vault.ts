@@ -8,6 +8,7 @@ import { StudioProFactory, StudioProVaultStats, getContractAddressesForChainOrTh
 import { ChainId } from '@factordao/sdk';
 import { generateDeployVaultScript } from '../../templates/index.js';
 import { saveForgeScript } from '../foundry/run-forge-script.js';
+import { formatWei, getTokenDecimals } from '../../utils/format.js';
 
 export const createVaultSchema = z.object({
   name: z.string().min(1).max(50),
@@ -375,6 +376,7 @@ export const createVaultTool = {
         ]);
 
         const publicClient = getPublicClient();
+        const denominatorDecimals = await getTokenDecimals(publicClient, validated.assetDenominatorAddress as Address);
         const allContractAddresses = getContractAddressesForChainOrThrow(chainId, environment);
         const factoryAddr = (allContractAddresses as any).factor_studio_pro_factory as string | undefined;
         if (factoryAddr) {
@@ -402,7 +404,9 @@ export const createVaultTool = {
               error: 'INSUFFICIENT_ALLOWANCE',
               message: `Insufficient token allowance for vault deployment. The factory needs at least ${initialDeposit.toString()} wei of the denominator token (${validated.assetDenominatorAddress}) approved. Current allowance: ${allowance.toString()}. Call factor_give_approval first, or use factor_run_forge_script with the simulationHint below to simulate the full deployment on a forked network.`,
               currentAllowance: allowance.toString(),
+              currentAllowanceFmt: formatWei(allowance.toString(), denominatorDecimals),
               requiredAmount: initialDeposit.toString(),
+              requiredAmountFmt: formatWei(initialDeposit.toString(), denominatorDecimals),
               approvalHint: {
                 tool: 'factor_give_approval',
                 params: {
