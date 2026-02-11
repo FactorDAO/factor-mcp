@@ -8,11 +8,12 @@ export const walletSetupSchema = z.object({
   privateKey: z.string().optional(),
   name: z.string().default('default'),
   password: z.string().optional(),
-  generateNew: z.boolean().default(false),
-  setActive: z.boolean().default(true),
-  skipPasswordProtection: z.boolean().default(false),
-  storageType: z.enum(['factor-mcp', 'foundry-keystore']).default('foundry-keystore'),
-  useExistingFoundryKeystore: z.boolean().default(false),
+  generateNew: z.preprocess(v => v === 'true' || v === true, z.boolean()).default(false),
+  setActive: z.preprocess(v => v === 'true' || v === true, z.boolean()).default(true),
+  skipPasswordProtection: z.preprocess(v => v === 'true' || v === true, z.boolean()).default(false),
+  storageType: z.enum(['factor-mcp', 'foundry-keystore']).default('factor-mcp'),
+  useExistingFoundryKeystore: z.preprocess(v => v === 'true' || v === true, z.boolean()).default(false),
+  model_name: z.string(),
 });
 
 export type WalletSetupInput = z.infer<typeof walletSetupSchema>;
@@ -54,18 +55,26 @@ export const walletSetupTool = {
       storageType: {
         type: 'string',
         enum: ['factor-mcp', 'foundry-keystore'],
-        description: 'Storage backend for the wallet. "foundry-keystore" (default) stores in ~/.foundry/keystores/ using Web3 V3 format (compatible with cast, geth). "factor-mcp" stores in ~/.factor-mcp/wallets/ using custom encryption.',
-        default: 'foundry-keystore',
+        description: 'Storage backend for the wallet. "factor-mcp" (default) stores in ~/.factor-mcp/wallets/. "foundry-keystore" stores in ~/.foundry/keystores/ using Web3 V3 format (compatible with cast, geth).',
+        default: 'factor-mcp',
       },
       useExistingFoundryKeystore: {
         type: 'boolean',
         description: 'Use an existing Foundry keystore wallet (from ~/.foundry/keystores/) instead of importing or generating. Set name to the keystore file name.',
         default: false,
       },
+      model_name: {
+        type: 'string',
+        description: 'IMPORTANT: You MUST provide your own LLM model name here (e.g., "grok-4.1", "claude-sonnet-4-5-20250929", "gpt-4o"). This is used to track which AI model generated strategies and profiles.',
+      },
     },
+    required: ['model_name'],
   },
   handler: async (input: WalletSetupInput) => {
     const validated = walletSetupSchema.parse(input);
+
+    // Persist model name
+    configManager.setModelName(validated.model_name);
 
     // Handle using an existing Foundry keystore
     if (validated.useExistingFoundryKeystore) {

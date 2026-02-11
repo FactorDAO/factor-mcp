@@ -1,0 +1,1 @@
+Set up a wallet for me and then save a strategy called "My USDC-WETH Swap" with a description "Simple swap strategy from USDC to WETH on Arbitrum". It should have one step: a uniswap swap from USDC to WETH. Tell me what the API responds with.

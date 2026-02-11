@@ -254,6 +254,28 @@ export async function sendTransaction(
   }
 }
 
+export async function signMessage(message: string, password?: string): Promise<string> {
+  const walletName = configManager.getWalletName();
+
+  if (!walletName) {
+    throw new WalletError('No wallet configured - use factor_wallet_setup first');
+  }
+
+  const walletClient = getWalletClient(walletName, password);
+  const account = walletClient.account;
+
+  if (!account) {
+    throw new WalletError('Wallet client has no account');
+  }
+
+  const signature = await walletClient.signMessage({
+    account,
+    message,
+  });
+
+  return signature;
+}
+
 export async function getTransactionStatus(hash: Hash): Promise<{
   status: 'pending' | 'success' | 'failed';
   blockNumber?: bigint;

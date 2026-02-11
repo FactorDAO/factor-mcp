@@ -60,8 +60,16 @@ const EXPECTED_TOOL_NAMES = [
   'factor_lend_borrow',
   'factor_lend_repay',
 
-  // Strategy (1)
+  // Profile (2)
+  'factor_save_profile',
+  'factor_get_profile',
+
+  // Strategy (5)
   'factor_list_adapters',
+  'factor_save_strategy',
+  'factor_delete_strategy',
+  'factor_get_strategy',
+  'factor_get_strategies',
 
   // Swap (4)
   'factor_swap',

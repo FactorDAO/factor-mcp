@@ -48,8 +48,16 @@ import { lendWithdrawTool } from './lending/lend-withdraw.js';
 import { lendBorrowTool } from './lending/lend-borrow.js';
 import { lendRepayTool } from './lending/lend-repay.js';
 
+// Profile tools
+import { saveProfileTool } from './profile/save-profile.js';
+import { getProfileTool } from './profile/get-profile.js';
+
 // Strategy tools
 import { listAdaptersTool } from './strategy/list-adapters.js';
+import { saveStrategyTool } from './strategy/save-strategy.js';
+import { deleteStrategyTool } from './strategy/delete-strategy.js';
+import { getStrategyTool } from './strategy/get-strategy.js';
+import { getStrategiesTool } from './strategy/get-strategies.js';
 
 // Swap tools
 import { swapTool } from './swap/swap.js';
@@ -122,7 +130,13 @@ export {
   lendWithdrawTool,
   lendBorrowTool,
   lendRepayTool,
+  saveProfileTool,
+  getProfileTool,
   listAdaptersTool,
+  saveStrategyTool,
+  deleteStrategyTool,
+  getStrategyTool,
+  getStrategiesTool,
   swapTool,
   swapExactOutputTool,
   swapOpenOceanTool,
@@ -196,8 +210,16 @@ export const allTools = [
   lendBorrowTool,
   lendRepayTool,
 
-  // Strategy (1)
+  // Profile (2)
+  saveProfileTool,
+  getProfileTool,
+
+  // Strategy (5)
   listAdaptersTool,
+  saveStrategyTool,
+  deleteStrategyTool,
+  getStrategyTool,
+  getStrategiesTool,
 
   // Swap (4)
   swapTool,
@@ -270,7 +292,13 @@ export type ToolName =
   | 'factor_lend_withdraw'
   | 'factor_lend_borrow'
   | 'factor_lend_repay'
+  | 'factor_save_profile'
+  | 'factor_get_profile'
   | 'factor_list_adapters'
+  | 'factor_save_strategy'
+  | 'factor_delete_strategy'
+  | 'factor_get_strategy'
+  | 'factor_get_strategies'
   | 'factor_swap'
   | 'factor_swap_exact_output'
   | 'factor_swap_openocean'

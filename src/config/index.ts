@@ -110,6 +110,16 @@ class ConfigManager {
     return this.env.environment;
   }
 
+  getModelName(): string {
+    return loadJsonConfig().modelName || 'AI';
+  }
+
+  setModelName(name: string, persist: boolean = true): void {
+    if (persist) {
+      updateJsonConfig({ modelName: name });
+    }
+  }
+
   setAlchemyApiKey(apiKey: string): void {
     this.env.alchemyApiKey = apiKey;
     updateJsonConfig({ alchemyApiKey: apiKey });

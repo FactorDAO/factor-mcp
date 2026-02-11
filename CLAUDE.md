@@ -35,13 +35,13 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - **production** - Production contracts
 - **testing** - Testing/staging contracts (default for development)
 
-## Available Tools (60 total)
+## Available Tools (68 total)
 
 ### Configuration (5 tools)
 - `factor_get_config` - View current configuration (chain, RPC, wallet, simulation mode, environment)
 - `factor_set_chain` - Switch chain (ARBITRUM_ONE, BASE, MAINNET)
 - `factor_set_rpc` - Set custom RPC endpoint
-- `factor_wallet_setup` - Import or generate a wallet
+- `factor_wallet_setup` - Import or generate a wallet (requires `model_name` — the LLM must self-identify its model name)
 - `factor_get_address_book` - Get SDK address book (Pro adapters only) for the current chain and environment
 
 ### Tokenlist (2 tools)
@@ -113,6 +113,14 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_simulate_strategy` - Simulate a strategy with real gas estimation via eth_call
 - `factor_execute_strategy` - Execute a strategy on-chain
 
+### Profile & Strategy (6 tools)
+- `factor_save_profile` - Save a user profile with wallet signature. Signs: `"Save profile for: " + address.toLowerCase()`. POSTs to `/profiles`.
+- `factor_get_profile` - Get a user profile by address (read-only, no wallet needed).
+- `factor_save_strategy` - Save or update a vault strategy with wallet signature. Signs: `"Save strategy: " + name`. POSTs to `/strategies/save` with chain (numeric chainId), strategy steps, vault_address, etc. Include `hash` to update an existing strategy.
+- `factor_delete_strategy` - Delete a saved strategy with wallet signature. Signs: `"Delete strategy: " + hash`. POSTs to `/strategies/delete`.
+- `factor_get_strategy` - Get a strategy by hash (read-only, no wallet needed). GET `/strategies/:hash`.
+- `factor_get_strategies` - Get all strategies for an owner on a chain (read-only). GET `/strategies/:chainId/:owner`.
+
 ### Transactions (2 tools)
 - `factor_preview_transaction` - Preview with gas estimate
 - `factor_get_transaction_status` - Check transaction status
@@ -180,9 +188,9 @@ These are the SDK property names used as `protocol`/`adapter` parameter values:
 
 ## Common Workflows
 
-### Setup Wallet (Foundry Keystore - Default)
+### Setup Wallet (Foundry Keystore)
 ```
-1. factor_wallet_setup with privateKey and password (stores in ~/.foundry/keystores/)
+1. factor_wallet_setup with privateKey, password, model_name, and storageType: "foundry-keystore" (stores in ~/.foundry/keystores/)
 2. factor_get_config to verify wallet is active
 ```
 
@@ -192,9 +200,9 @@ These are the SDK property names used as `protocol`/`adapter` parameter values:
 2. Password will be required for all write operations (deposit, withdraw, etc.)
 ```
 
-### Setup Wallet (Legacy Factor-MCP)
+### Setup Wallet (Factor-MCP - Default)
 ```
-1. factor_wallet_setup with privateKey, password, and storageType: "factor-mcp"
+1. factor_wallet_setup with privateKey, model_name, and optionally password or skipPasswordProtection: true
 2. factor_get_config to verify wallet is active
 ```
 
@@ -443,6 +451,20 @@ Use `factor_vault_templates` with `lendingProtocol: "morpho"`. The vault deploys
 7. factor_lend_supply with protocol: "morpho", marketId: "<chosen>" to supply
 ```
 
+### Save a Strategy
+```
+1. factor_wallet_setup with model_name (LLM self-identifies its model name)
+2. factor_save_strategy with name, description, strategy (steps array or canvas object), vault_address, chain (auto from config)
+   → Returns strategy hash for future reference
+3. factor_get_strategy with hash to verify it was saved
+```
+
+### Get Strategies for an Address
+```
+1. factor_get_strategies with chainId and owner address
+   → Returns all strategies owned by that address on that chain
+```
+
 ### Debug a Failed Transaction (Requires Foundry)
 ```
 1. factor_check_foundry to verify Foundry is installed
@@ -490,8 +512,8 @@ Wallets can be stored in two locations:
 - **Factor-MCP** (legacy): `~/.factor-mcp/wallets/{name}.json` - Custom encryption format
 
 The `factor_wallet_setup` tool accepts a `storageType` parameter:
-- `"foundry-keystore"` (default) - Requires password, stores in Foundry-compatible V3 keystore
-- `"factor-mcp"` - Legacy storage, supports optional password encryption
+- `"factor-mcp"` (default) - Supports optional password encryption (AES-256-GCM)
+- `"foundry-keystore"` - Requires password, stores in Foundry-compatible V3 keystore
 
 To use an existing Foundry keystore (e.g. created with `cast wallet import`), set `useExistingFoundryKeystore: true`.
 

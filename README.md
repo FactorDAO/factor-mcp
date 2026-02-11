@@ -4,7 +4,7 @@ An MCP (Model Context Protocol) server that enables AI tools to interact with Fa
 
 ## Features
 
-- **62 MCP Tools** for complete vault management
+- **68 MCP Tools** for complete vault management
 - **Multi-chain Support**: Arbitrum One, Base, Ethereum Mainnet
 - **Secure Wallet Management**: Foundry Keystore (Web3 V3) + AES-256-GCM encryption
 - **Simulation Mode**: Preview transactions before execution
@@ -191,6 +191,17 @@ Add to your Claude Code config (`~/.config/claude-code/config.json` or MCP setti
 | `factor_preview_transaction` | Preview tx with gas estimate |
 | `factor_get_transaction_status` | Check tx status by hash |
 
+### Profile & Strategy (6 tools)
+
+| Tool | Description |
+|------|-------------|
+| `factor_save_profile` | Save a user profile (requires wallet signature) |
+| `factor_get_profile` | Get a user profile by address (read-only) |
+| `factor_save_strategy` | Save or update a vault strategy (requires wallet signature) |
+| `factor_delete_strategy` | Delete a saved strategy (requires wallet signature) |
+| `factor_get_strategy` | Get a strategy by hash (read-only) |
+| `factor_get_strategies` | Get all strategies for an owner on a chain (read-only) |
+
 ### Foundry Tools (5 tools)
 
 | Tool | Description |
@@ -206,8 +217,8 @@ Add to your Claude Code config (`~/.config/claude-code/config.json` or MCP setti
 ### Wallet Storage
 
 Wallets support two backends:
-- **Foundry Keystore** (default): `~/.foundry/keystores/` — Web3 Secret Storage V3 format, compatible with cast/geth
-- **Factor-MCP** (legacy): `~/.factor-mcp/wallets/` — Custom AES-256-GCM encryption, PBKDF2 key derivation (100k iterations)
+- **Factor-MCP** (default): `~/.factor-mcp/wallets/` — AES-256-GCM encryption, PBKDF2 key derivation (100k iterations)
+- **Foundry Keystore**: `~/.foundry/keystores/` — Web3 Secret Storage V3 format, compatible with cast/geth
 
 ### Best Practices
 
@@ -432,14 +443,14 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 
 - [x] Execute strategy via `executeByManager`
 - [x] List available adapters (`factor_list_adapters`)
-- [ ] Save strategy to contract (`saveStrategy`)
-- [ ] Save strategy draft (`saveDraft`)
-- [ ] Save strategy profile / metadata (`saveProfile`)
+- [x] Save strategy to Stats API (`factor_save_strategy`)
+- [x] Delete strategy from Stats API (`factor_delete_strategy`)
+- [x] Get strategy by hash (`factor_get_strategy`)
+- [x] Get strategies by owner (`factor_get_strategies`)
+- [x] Save profile to Stats API (`factor_save_profile`)
+- [x] Get profile from Stats API (`factor_get_profile`)
 - [ ] Export strategy as calldata (`export`)
 - [ ] Export strategy as JSON (`exportToJson`)
-- [ ] Get saved strategy (`getLatestSavedStrategy`)
-- [ ] Get saved draft (`getLatestSavedDraft`)
-- [ ] Get strategy profile (`getStrategyProfile`)
 - [ ] Clone strategy (`clone`)
 - [ ] Debug strategy step-by-step (`debugFromBlocks`)
 - [ ] Estimate user impact (`estimate` / `estimateFromBlocks`)
@@ -611,14 +622,14 @@ Only `_pro` adapters are used by the MCP server. Adapters without any deployment
 | LP Operations | 12 | 14 | 86% |
 | Yield (Pendle) | 3 | 3 | 100% |
 | Flash Loans | 2 | 3 | 67% |
-| Strategy Builder | 2 | 14 | 14% |
+| Strategy Builder | 8 | 14 | 57% |
 | Utility Adapters | 0 | 9 | 0% |
 | Adapter Discovery | 1 | 8 | 13% |
 | Boost System | 0 | 9 | 0% |
 | Scale System | 0 | 14 | 0% |
 | Bribe System | 0 | 4 | 0% |
 | Transaction & Debugging | 9 | 9 | 100% |
-| **TOTAL** | **~93** | **~176** | **~53%** |
+| **TOTAL** | **~99** | **~176** | **~56%** |
 
 ## License
 

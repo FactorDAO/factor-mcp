@@ -16,6 +16,7 @@ export interface JsonConfig {
   customRpcUrl?: string;
   activeWallet?: string;
   environment?: FactorEnvironment;
+  modelName?: string;
 }
 
 export interface EnvironmentConfig {
