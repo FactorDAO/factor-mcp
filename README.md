@@ -523,9 +523,10 @@ This roadmap tracks the MCP server's coverage of the `@factordao/sdk-studio` pac
 
 Only `_pro` adapters are used by the MCP server. Adapters without any deployment are excluded from the roadmap.
 
+#### Lending
+
 | Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
 |---------|:--------:|:--------:|:---------:|:---------:|
-| **Lending** | | | | |
 | Aave | ✅ | ✅ | ✅ | ✅ |
 | Compound V3 | ✅ | ✅ | ✅ | ✅ |
 | Compound V3 Market | ✅ | ✅ | ✅ | ✅ |
@@ -534,25 +535,42 @@ Only `_pro` adapters are used by the MCP server. Adapters without any deployment
 | Silo V1 | ✅ | ✅ | - | ✅ |
 | Silo V2 | - | ✅ | - | - |
 | Silo V2 Market | - | ✅ | - | - |
-| **DEX** | | | | |
+
+#### DEX
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
 | Uniswap | ✅ | ✅ | ✅ | ✅ |
 | OpenOcean | ✅ | ✅ | ✅ | ✅ |
 | Pendle PY (PT/YT swaps) | ✅ | ✅ | ✅ | ✅ |
 | Pendle PY Market | ✅ | ✅ | ✅ | ✅ |
 | Aqua | - | - | - | ✅ |
-| **LP** | | | | |
+
+#### LP
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
 | Uniswap V3 LP | - | ✅ | - | ✅ |
 | Camelot V3 LP | - | ✅ | - | - |
 | Aerodrome LP | - | - | - | ✅ |
-| **Yield** | | | | |
+
+#### Yield
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
 | Pendle | ✅ | ✅ | - | ✅ |
-| **Flash Loans** | | | | |
+
+#### Flash Loans
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
 | Balancer FL | ✅ | ✅ | ✅ | ✅ |
 | Morpho FL | - | - | - | ✅ |
-| **Infrastructure** | | | | |
-| Adapter Management | ✅ | ✅ | ✅ | ✅ |
-| Asset/Debt | ✅ | ✅ | ✅ | ✅ |
-| Deposit Policy | ✅ | - | - | ✅ |
+
+#### Accounting
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
 | Chainlink Accounting | ✅ | ✅ | ✅ | ✅ |
 | Chainlink Pegged Accounting | ✅ | ✅ | ✅ | ✅ |
 | Aave Accounting | ✅ | ✅ | ✅ | ✅ |
@@ -562,6 +580,14 @@ Only `_pro` adapters are used by the MCP server. Adapters without any deployment
 | Compound V3 Debt Accounting | ✅ | ✅ | - | ✅ |
 | Silo V2 Collateral Accounting | - | ✅ | - | - |
 | Silo V2 Debt Accounting | - | ✅ | - | - |
+
+#### Infrastructure
+
+| Adapter | Arb Prod | Arb Test | Base Prod | Base Test |
+|---------|:--------:|:--------:|:---------:|:---------:|
+| Adapter Management | ✅ | ✅ | ✅ | ✅ |
+| Asset/Debt | ✅ | ✅ | ✅ | ✅ |
+| Deposit Policy | ✅ | - | - | ✅ |
 | Gelato | ✅ | ✅ | ✅ | ✅ |
 | Boost | ✅ | ✅ | ✅ | ✅ |
 
@@ -593,54 +619,6 @@ Only `_pro` adapters are used by the MCP server. Adapters without any deployment
 | Bribe System | 0 | 4 | 0% |
 | Transaction & Debugging | 9 | 9 | 100% |
 | **TOTAL** | **~93** | **~176** | **~53%** |
-
----
-
-### Priority Roadmap
-
-**P0 — Core DeFi (high impact, frequently used)**
-- [ ] Deposit native ETH
-- [ ] Deposit and execute in one tx
-- [x] ~~Uniswap exact output swaps~~ (`factor_swap_exact_output`)
-- [ ] Compound V3 claim rewards
-- [ ] Balancer flash loans
-- [ ] Transfer adapter (move tokens)
-- [ ] Native adapter (wrap/unwrap ETH)
-
-**P1 — Strategy Persistence & Management**
-- [ ] Save strategy to contract
-- [ ] Save strategy draft
-- [ ] Export strategy (calldata / JSON)
-- [ ] Load saved strategy
-- [ ] Public strategy management (set, remove, execute)
-- [ ] Deposit strategy management (set, remove)
-- [ ] Debug strategy step-by-step
-
-**P2 — Adapter Discovery & Portfolio**
-- [ ] Get user portfolio across all adapters
-- [ ] Get markets / protocols by token
-- [ ] Get adapter metadata
-- [ ] Get building block types
-- [ ] Vault simulation (deposit, fees)
-
-**P3 — Additional Protocols**
-- [ ] Aqua DEX swaps (Base testing only)
-- [ ] Morpho flash loans (Base testing only)
-
-**P4 — Tokenomics & Governance**
-- [ ] Boost system (rewards, whitelist, redemption)
-- [ ] Scale system (vaults, voting, rewards, market data)
-- [ ] Bribe system (create, claim, query)
-
-**P5 — Advanced Utilities**
-- [ ] ERC721 / NFT operations
-- [ ] Leverage vault & strategy
-- [ ] Deposit policy management
-- [ ] Gelato automation
-- [ ] Chainlink direct price feeds
-- [ ] Permit / gasless approvals
-- [ ] Refund dust adapter
-- [ ] LP remove by percentage
 
 ## License
 
