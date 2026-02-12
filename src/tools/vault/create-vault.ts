@@ -17,11 +17,11 @@ export const createVaultSchema = z.object({
   assetDenominatorAccountingAddress: z.string().optional(),
   initialDepositAmount: z.string().default('1600'), // Minimum 1500 wei required
   // Config params
-  upgradeable: z.boolean().default(false),
+  upgradeable: z.boolean().default(true), // Default to upgradeable for easier maintenance
   upgradeTimelockSeconds: z.number().default(86400), // 1 day
-  cooldownTimeSeconds: z.number().default(0),
-  maxCap: z.string().default('1000000000000'),
-  maxDebtRatio: z.string().default('10000'), // 100% in basis points
+  cooldownTimeSeconds: z.number().default(60), // 1 minute - protect against flash loans
+  maxCap: z.string().default('1000000000000000000'), // 1 wei to allow for 1 WETH cap for WETH denominated vaults. $1T max cap for USDC denominated vaults.
+  maxDebtRatio: z.string().default('5000'), // 50% in basis points
   // Immutable option - if true, no default adapters are added
   immutable: z.boolean().default(false),
   // Initial assets
