@@ -497,11 +497,11 @@ Deploy a new Factor Pro vault.
 | name | string | Yes | - | Vault name (max 50 chars) |
 | symbol | string | Yes | - | Token symbol (max 10 chars) |
 | assetDenominatorAddress | string | Yes | - | Main accounting token |
-| initialDepositAmount | string | No | "0" | Initial deposit in wei |
-| upgradeable | boolean | No | false | Can vault be upgraded |
+| initialDepositAmount | string | No | "1600" | Initial deposit in wei |
+| upgradeable | boolean | No | true | Can vault be upgraded |
 | upgradeTimelockSeconds | number | No | 86400 | Upgrade delay (1 day) |
-| cooldownTimeSeconds | number | No | 0 | Withdrawal cooldown |
-| maxCap | string | No | "0" | Max vault size (0 = no cap) |
+| cooldownTimeSeconds | number | No | 60 | Withdrawal cooldown (1 minute) |
+| maxCap | string | No | "1000000000000000000" | Max vault size (0 = no cap) |
 | initialAssetAddresses | string[] | No | [denominator] | Allowed assets |
 | initialDepositAssetAddresses | string[] | No | [denominator] | Deposit assets |
 | initialWithdrawAssetAddresses | string[] | No | [denominator] | Withdraw assets |
