@@ -37,8 +37,8 @@ export const createVaultSchema = z.object({
   initialOwnerAdapters: z.array(z.string()).optional(),
   initialWithdrawAdapters: z.array(z.string()).optional(),
   // Fees (in percentage 0-100)
-  depositFee: z.number().min(0).max(100).default(0),
-  withdrawFee: z.number().min(0).max(100).default(0),
+  depositFee: z.number().min(0).max(100).default(0.2),
+  withdrawFee: z.number().min(0).max(100).default(0.2),
   managementFee: z.number().min(0).max(100).default(0),
   performanceFee: z.number().min(0).max(100).default(0),
   // Wallet
