@@ -725,7 +725,35 @@ Execute a built strategy on-chain.
 
 ## Common Workflows
 
-### Workflow 1: Deposit USDC to a Vault
+### Workflow 1: Create a New Vault (as Manager)
+
+**RECOMMENDED: Always start from a template.** When the user wants to create a vault, use `factor_vault_templates` first. Ask the user:
+1. Which **chain** to deploy on (ARBITRUM_ONE, BASE, MAINNET)
+2. Which **denominator token** (USDC, WETH, etc.)
+3. Which **lending protocols** to include (aave, compoundV3, morpho, or none)
+
+Then call `factor_vault_templates` with the appropriate `denominator` and `lendingProtocol` params. The template provides ready-to-use `createVaultParams` with all adapters, tokens, and accounting addresses pre-configured.
+
+```
+1. factor_get_config
+   → Ensure wallet is configured, check current chain
+
+2. factor_vault_templates { denominator: "USDC" }
+   → Get ready-to-use createVaultParams and approvalStep
+   → Or with lending: factor_vault_templates { denominator: "USDC", lendingProtocol: "aave" }
+
+3. factor_give_approval with the approvalStep params
+
+4. factor_create_vault with the createVaultParams (customize name/symbol as needed)
+   → Get transaction hash
+   → Vault address available in transaction receipt events
+
+5. (If lending) Follow the postDeploySteps from the template:
+   → factor_deposit to add funds
+   → factor_lend_supply to supply to the protocol
+```
+
+### Workflow 2: Deposit USDC to a Vault (as Depositor)
 
 ```
 1. factor_get_config
@@ -759,33 +787,28 @@ Execute a built strategy on-chain.
    → Get transaction hash
 ```
 
-### Workflow 2: Check and Withdraw Position
+### Workflow 3: Prepare Vault + Execute a Swap via OpenOcean (as Manager)
+
+Before swapping, the vault must have the Uniswap adapter, the tokenIn and tokenOut registered as an asset.
 
 ```
-1. factor_get_shares { vaultAddress: "0xVAULT" }
-   → Note userShares and estimatedValue
+Step 1: Get the Uniswap adapter
+   factor_get_address_book
+   → Find: factor_uniswap_adapter_pro
 
-2. factor_preview_withdraw {
-     vaultAddress: "0xVAULT",
-     shares: "500000000000000000000"  // Example: 500 shares
-   }
-   → Check assetsReceived amount
-
-3. factor_withdraw {
-     vaultAddress: "0xVAULT",
-     shares: "500000000000000000000",
-     password: "wallet-password"
-   }
-```
-
-### Workflow 3: Execute a Swap Strategy (as Manager)
-
-```
-1. factor_get_vault_info { vaultAddress: "0xVAULT" }
+Step 2: Check current vault state
+   factor_get_vault_info { vaultAddress: "0xVAULT" }
    → Verify you are in the managers list
-   → Check available adapters include uniswap
+   → Check available adapters include Uniswap and both tokenIn and tokenOut are registered as assets.
 
-2. factor_execute_manager {
+Step 3: Add Uniswap adapter (if not already present)
+   factor_add_adapter {
+     vaultAddress: "0xVAULT",
+     adapterAddress: "<factor_uniswap_adapter_pro from step 2>"
+   }
+
+Step 4: Execute the Uniswap swap
+   factor_execute_manager {
      vaultAddress: "0xVAULT",
      steps: [{
        protocol: "uniswap",
@@ -800,7 +823,31 @@ Execute a built strategy on-chain.
    }
 ```
 
-### Workflow 4: Prepare Vault + Supply to Aave (Complete Flow)
+### Workflow 4: Execute a Swap via OpenOcean (as Manager)
+
+```
+Step 1: Check current vault state
+   factor_get_vault_info { vaultAddress: "0xVAULT" }
+   → Verify you are in the managers list
+   → Check available adapters include Uniswap and both tokenIn and tokenOut are registered as assets.
+
+Step 2: Execute the Uniswap swap
+   factor_execute_manager {
+     vaultAddress: "0xVAULT",
+     steps: [{
+       protocol: "uniswap",
+       action: "exactInputSingleAll",
+       params: {
+         tokenIn: "0xUSDC...",
+         tokenOut: "0xWETH...",
+         fee: 500
+       }
+     }],
+     password: "wallet-password"
+   }
+```
+
+### Workflow 5: Prepare Vault + Supply to Aave (as Manager)
 
 Before lending, the vault must have the Aave adapter, the aToken registered as an asset, and optionally the debt token for borrowing.
 
@@ -855,41 +902,33 @@ Step 8: Supply to Aave
    }
 ```
 
-### Workflow 5: Aave Leverage (Borrow + Repay + Withdraw)
+### Workflow 6: Supply to Aave (as Manager)
 
-Assumes vault is already set up with Aave adapter + aToken + debtToken (see Workflow 4).
+Before lending, the vault must have the Aave adapter, the aToken registered as an asset, and optionally the debt token for borrowing.
 
 ```
-1. factor_lend_supply {
+Step 1: Supply to Aave
+   factor_lend_supply {
      vaultAddress: "0xVAULT",
      protocol: "aave",
-     assetAddress: "0xUSDC...",
-     amount: "1000000000"  // 1000 USDC as collateral
-   }
-
-2. factor_lend_borrow {
-     vaultAddress: "0xVAULT",
-     protocol: "aave",
-     debtAddress: "0xWETH...",
-     amount: "500000000000000000"  // 0.5 WETH
-   }
-
-3. factor_lend_repay {
-     vaultAddress: "0xVAULT",
-     protocol: "aave",
-     debtAddress: "0xWETH...",
-     amount: "all"  // repay full debt (also supports "50%" for partial repay)
-   }
-
-4. factor_lend_withdraw {
-     vaultAddress: "0xVAULT",
-     protocol: "aave",
-     assetAddress: "0xUSDC...",
-     amount: "all"  // withdraw all collateral (also supports "50%" for partial withdraw)
+     assetAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+     amount: "all"
    }
 ```
 
-### Workflow 6: Prepare Vault + Supply to Compound V3
+### Workflow 7: Withdraw from Aave (as Manager)
+
+```
+Step 1: Withdraw from Aave
+   factor_lend_withdraw {
+     vaultAddress: "0xVAULT",
+     protocol: "aave",
+     assetAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+     amount: "all"
+   }
+```
+
+### Workflow 8: Prepare Vault + Supply to Compound V3 (as Manager)
 
 Compound V3 requires TWO adapters (`factor_compound_v3_adapter_pro` + `factor_compound_v3_market_adapter_pro`) and a market registration step.
 
@@ -935,156 +974,53 @@ Step 6: Supply
    }
 ```
 
-### Workflow 7: Prepare Vault + Supply to Morpho
-
-Morpho requires: (1) Morpho adapter + market adapter, (2) BOTH collateral AND loan tokens registered as vault assets with **Chainlink accounting**, (3) market registered via `addMarketToAssetAndDebt`. All of this MUST be done BEFORE any supply/withdraw/borrow/repay.
-
-**IMPORTANT - Market Selection**: NEVER pick a Morpho market automatically. Always:
-1. Present available markets to the user (from `factor_get_lending_tokens`)
-2. Provide the Morpho interface link for the relevant chain so the user can review:
-   - Base: https://app.morpho.org/?network=base
-   - Ethereum: https://app.morpho.org/?network=mainnet
-   - Arbitrum: https://app.morpho.org/?network=arbitrum
-3. Wait for the user to confirm which market they want before proceeding
-4. Run ALL pre-flight checks (step 3 below) before any on-chain action
+### Workflow 9: Supply to Compound V3 (as Manager)
 
 ```
-Step 1: Look up Morpho markets and ASK the user which one to use
-   factor_get_lending_tokens { protocol: "morpho", underlyingAsset: "0xUSDC..." }
-   → Returns marketId, loanToken, loanSymbol, collateralToken, collateralSymbol for each market
-   → Present the list to the user with the Morpho interface link
-   → WAIT for user to choose a market before continuing
-
-Step 2: Get adapter and accounting addresses
-   factor_get_address_book
-   → Find: factor_morpho_adapter_pro, factor_morpho_market_adapter_pro, factor_chainlink_accounting_adapter_pro
-
-Step 3: Pre-flight checks - verify ALL tokens BEFORE any on-chain action
-   a. Chainlink price feed check for EACH token (collateral + loan):
-      factor_cast_call {
-        to: "<chainlink_accounting_adapter_pro>",
-        signature: "getPriceDetails(address)((uint256,uint8,uint8))",
-        args: ["<token_address>"]
-      }
-      → If it returns (price, feedDecimals, tokenDecimals), the token has a feed
-      → If it reverts with ACC_CHAINLINK__OracleNotFound(), NO feed exists - STOP and tell the user
-
-   b. Factory whitelist check:
-      factor_get_factory_addresses
-      → Verify each token + chainlink_accounting pair exists in the assets[] list
-      → If a token is NOT whitelisted - STOP and tell the user
-
-   c. Only proceed if ALL tokens pass both checks
-
-Step 4: Add Morpho adapter (if missing)
-   factor_add_adapter { vaultAddress: "0xVAULT", adapterAddress: "<morpho_adapter_pro>" }
-
-Step 5: Add Morpho market adapter (if missing)
-   factor_add_adapter { vaultAddress: "0xVAULT", adapterAddress: "<morpho_market_adapter_pro>" }
-   → BOTH adapters are required
-
-Step 6: Register BOTH collateral and loan tokens as vault assets (if not already)
-   factor_add_vault_token {
-     vaultAddress: "0xVAULT",
-     tokenAddress: "<collateralToken>",
-     accountingAddress: "<chainlink_accounting_adapter_pro>",
-     type: "asset"
-   }
-   → Verify tx success with factor_get_transaction_status before continuing
-   factor_add_vault_token {
-     vaultAddress: "0xVAULT",
-     tokenAddress: "<loanToken>",
-     accountingAddress: "<chainlink_accounting_adapter_pro>",
-     type: "asset"
-   }
-   → Verify tx success - both tokens MUST be vault assets before next step
-
-Step 7: Register the market (REQUIRED before any supply/withdraw/borrow/repay)
-   factor_execute_manager {
-     vaultAddress: "0xVAULT",
-     steps: [{
-       protocol: "morpho",
-       action: "addMarketToAssetAndDebt",
-       params: { marketId: "<MARKET_ID>" }
-     }]
-   }
-   → Verify tx success - if it reverts with INVALID_ASSET, a token from step 6 is missing
-
-Step 8: Supply
+Step 1: Supply
    factor_lend_supply {
      vaultAddress: "0xVAULT",
-     protocol: "morpho",
-     marketId: "<MARKET_ID>",
+     protocol: "compoundV3",
+     marketAddress: "<cToken>",
+     assetAddress: "0xUSDC...",
      amount: "all"
    }
 ```
 
-**IMPORTANT**:
-- `addMarketToAssetAndDebt` validates that BOTH the collateral token AND the loan token are already registered as vault assets. If either is missing, the call will revert with `INVALID_ASSET`.
-- NEVER supply to a Morpho market without completing step 7 (`addMarketToAssetAndDebt`) first. Without market registration, supply may partially work but withdraw will be impossible, locking funds.
-- Always verify every transaction succeeded (via `factor_get_transaction_status`) before proceeding to the next step.
-
-### Workflow 8: Create a New Vault
-
-**RECOMMENDED: Always start from a template.** When the user wants to create a vault, use `factor_vault_templates` first. Ask the user:
-1. Which **chain** to deploy on (ARBITRUM_ONE, BASE, MAINNET)
-2. Which **denominator token** (USDC, WETH, etc.)
-3. Which **lending protocols** to include (aave, compoundV3, morpho, or none)
-
-Then call `factor_vault_templates` with the appropriate `denominator` and `lendingProtocol` params. The template provides ready-to-use `createVaultParams` with all adapters, tokens, and accounting addresses pre-configured.
+### Workflow 10: Withdraw from Compound V3 (as Manager)
 
 ```
-1. factor_get_config
-   → Ensure wallet is configured, check current chain
+Step 2: Look up Compound V3 token info
+   factor_get_lending_tokens { protocol: "compoundV3", underlyingAsset: "0xUSDC..." }
+   → Returns baseAssetAddress (cToken/market), underlyingAddress
 
-2. factor_vault_templates { denominator: "USDC" }
-   → Get ready-to-use createVaultParams and approvalStep
-   → Or with lending: factor_vault_templates { denominator: "USDC", lendingProtocol: "aave" }
+Step 1: Withdraw from Compound V3
+   factor_lend_withdraw {
+     vaultAddress: "0xVAULT",
+     protocol: "compoundV3",
+     marketAddress: "<cToken>",
+     assetAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+     amount: "all"
+   }
+```
 
-3. factor_give_approval with the approvalStep params
+### Workflow 11: Withdraw position from Vault (as Depositor)
 
-4. factor_create_vault with the createVaultParams (customize name/symbol as needed)
+```
+1. factor_get_shares { vaultAddress: "0xVAULT" }
+   → Note userShares and estimatedValue
+
+2. factor_preview_withdraw {
+     vaultAddress: "0xVAULT",
+     shares: "500000000000000000000"  // Example: 500 shares
+   }
+
+3. factor_withdraw {
+     vaultAddress: "0xVAULT",
+     shares:"500000000000000000000",  // Example: 500 shares
+     password: "wallet-password"
+   }
    → Get transaction hash
-   → Vault address available in transaction receipt events
-
-5. (If lending) Follow the postDeploySteps from the template:
-   → factor_deposit to add funds
-   → factor_lend_supply to supply to the protocol
-```
-
-### Workflow 9: Create Vault + Supply to Aave (Streamlined)
-```
-1. factor_vault_templates { denominator: "USDC", lendingProtocol: "aave" }
-   → Returns createVaultParams with Aave adapter, aToken, and debtToken pre-configured
-2. factor_give_approval with the approvalStep params
-3. factor_create_vault with the createVaultParams
-   → Vault deploys fully ready for Aave lending
-4. factor_deposit to add USDC to the vault
-5. factor_lend_supply { protocol: "aave", assetAddress: "0xUSDC...", amount: "all" }
-```
-
-### Workflow 10: Create Vault + Supply to Compound V3 (Streamlined)
-```
-1. factor_vault_templates { denominator: "USDC", lendingProtocol: "compoundV3" }
-   → Returns createVaultParams with both Compound V3 adapters and cToken pre-configured
-2. factor_give_approval with the approvalStep params
-3. factor_create_vault with the createVaultParams
-4. factor_execute_manager with registerMarket step from postDeploySteps (REQUIRED before supply)
-5. factor_deposit to add USDC to the vault
-6. factor_lend_supply { protocol: "compoundV3", marketAddress: "<cToken>", assetAddress: "0xUSDC...", amount: "all" }
-```
-
-### Workflow 11: Create Vault + Supply to Morpho (Streamlined)
-```
-1. factor_vault_templates { denominator: "USDC", lendingProtocol: "morpho" }
-   → Returns createVaultParams with Morpho adapters and all tokens pre-registered
-   → Also returns lending.availableMarkets — present these to the user
-2. Let the user choose a market from lending.availableMarkets (NEVER auto-select)
-3. factor_give_approval with the approvalStep params
-4. factor_create_vault with the createVaultParams
-5. factor_execute_manager with addMarketToAssetAndDebt for the chosen marketId (REQUIRED)
-6. factor_deposit to add USDC to the vault
-7. factor_lend_supply { protocol: "morpho", marketId: "<chosen>", amount: "all" }
 ```
 
 ---
