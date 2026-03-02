@@ -44,3 +44,18 @@ export async function getTokenDecimals(publicClient: any, tokenAddress: Address)
     return 18;
   }
 }
+
+/**
+ * Read the symbol of an ERC20 token. Returns 'UNKNOWN' on failure.
+ */
+export async function getTokenSymbol(publicClient: any, tokenAddress: Address): Promise<string> {
+  try {
+    return await publicClient.readContract({
+      address: tokenAddress,
+      abi: [{ name: 'symbol', type: 'function', inputs: [], outputs: [{ name: '', type: 'string' }], stateMutability: 'view' }],
+      functionName: 'symbol',
+    });
+  } catch {
+    return 'UNKNOWN';
+  }
+}

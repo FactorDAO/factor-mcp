@@ -2,6 +2,9 @@ import { configManager } from '../../config/index.js';
 import { getContractAddressesForChainOrThrow, StudioProVaultStats } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { FactorTokenlist, ChainId as TokenlistChainId } from '@factordao/tokenlist';
+import { getPublicClient } from '../../wallet/signer.js';
+import { getTokenSymbol, getTokenDecimals } from '../../utils/format.js';
+import type { Address } from 'viem';
 
 // Well-known token addresses per chain
 const TOKEN_ADDRESSES: Record<string, Record<string, { address: string; decimals: number; symbol: string }>> = {
@@ -41,10 +44,65 @@ function getTokenlistChainId(chain: string): TokenlistChainId {
 }
 
 type LendingProtocol = 'aave' | 'compoundV3' | 'morpho';
+type VaultType = 'index_fund' | 'lending' | 'general';
 
 interface FactoryActiveAddresses {
   assets: Array<{ asset: string; accounting: string }>;
   debts: Array<{ asset: string; accounting: string }>;
+}
+
+export interface AvailableToken {
+  address: string;
+  symbol: string;
+  decimals: number;
+}
+
+/**
+ * Fetch factory whitelisted assets and resolve their symbols + decimals on-chain.
+ */
+async function getAvailableTokens(
+  chainId: ChainId,
+  environment: 'production' | 'staging' | 'testing',
+): Promise<AvailableToken[]> {
+  const proVaultStats = new StudioProVaultStats({ chainId, environment });
+  const factoryAddresses = await proVaultStats.getFactoryActiveAddresses() as FactoryActiveAddresses;
+
+  const publicClient = getPublicClient();
+  const uniqueAssets = new Map<string, string>(); // normalized address -> original address
+  for (const item of factoryAddresses.assets) {
+    const norm = item.asset.toLowerCase();
+    if (!uniqueAssets.has(norm)) {
+      uniqueAssets.set(norm, item.asset);
+    }
+  }
+
+  const results: AvailableToken[] = [];
+  const entries = Array.from(uniqueAssets.entries());
+
+  // Resolve symbols and decimals in parallel (batches of 10 to avoid rate limits)
+  const batchSize = 10;
+  for (let i = 0; i < entries.length; i += batchSize) {
+    const batch = entries.slice(i, i + batchSize);
+    const resolved = await Promise.all(
+      batch.map(async ([, addr]) => {
+        const [symbol, decimals] = await Promise.all([
+          getTokenSymbol(publicClient, addr as Address),
+          getTokenDecimals(publicClient, addr as Address),
+        ]);
+        return { address: addr, symbol, decimals };
+      }),
+    );
+    results.push(...resolved);
+  }
+
+  // Sort by symbol for readability, put UNKNOWN at the end
+  results.sort((a, b) => {
+    if (a.symbol === 'UNKNOWN' && b.symbol !== 'UNKNOWN') return 1;
+    if (b.symbol === 'UNKNOWN' && a.symbol !== 'UNKNOWN') return -1;
+    return a.symbol.localeCompare(b.symbol);
+  });
+
+  return results;
 }
 
 /**
@@ -378,29 +436,296 @@ function buildMorphoLendingConfig(
   }
 }
 
+/**
+ * Build a vault template from guided questionnaire answers.
+ */
+async function buildGuidedTemplate(
+  vaultType: VaultType,
+  strategyTokens: string[],
+  depositWithdrawTokens: string[],
+  chain: string,
+  chainId: ChainId,
+  environment: 'production' | 'staging' | 'testing',
+) {
+  // Validate depositWithdrawTokens is a subset of strategyTokens
+  const strategySet = new Set(strategyTokens.map(t => t.toLowerCase()));
+  for (const dt of depositWithdrawTokens) {
+    if (!strategySet.has(dt.toLowerCase())) {
+      return {
+        success: false,
+        error: 'INVALID_DEPOSIT_TOKEN',
+        message: `Deposit/withdraw token ${dt} is not in the strategy tokens list. It must be a subset.`,
+      };
+    }
+  }
+
+  let contractAddresses: any;
+  try {
+    contractAddresses = getContractAddressesForChainOrThrow(chainId, environment);
+  } catch {
+    return {
+      success: false,
+      error: 'SDK_ERROR',
+      message: `Could not load contract addresses for ${chain} (${environment})`,
+    };
+  }
+
+  const factoryAddress = contractAddresses.factor_studio_pro_factory as string;
+  if (!factoryAddress) {
+    return {
+      success: false,
+      error: 'NO_FACTORY',
+      message: `No factory address found for ${chain}. Vault creation may not be available on this chain.`,
+    };
+  }
+
+  // Fetch factory active addresses for accounting resolution
+  let factoryActiveAddresses: FactoryActiveAddresses;
+  try {
+    const proVaultStats = new StudioProVaultStats({ chainId, environment });
+    factoryActiveAddresses = await proVaultStats.getFactoryActiveAddresses() as FactoryActiveAddresses;
+  } catch {
+    return {
+      success: false,
+      error: 'FACTORY_FETCH_ERROR',
+      message: `Could not fetch factory active addresses for ${chain} (${environment}).`,
+    };
+  }
+
+  // Resolve token symbols/decimals for display
+  const publicClient = getPublicClient();
+  const tokenInfoMap = new Map<string, { symbol: string; decimals: number }>();
+  await Promise.all(
+    strategyTokens.map(async (addr) => {
+      const [symbol, decimals] = await Promise.all([
+        getTokenSymbol(publicClient, addr as Address),
+        getTokenDecimals(publicClient, addr as Address),
+      ]);
+      tokenInfoMap.set(addr.toLowerCase(), { symbol, decimals });
+    }),
+  );
+
+  // Use the first deposit/withdraw token as the denominator
+  const denominatorAddress = depositWithdrawTokens[0];
+  const denominatorInfo = tokenInfoMap.get(denominatorAddress.toLowerCase()) || { symbol: 'TOKEN', decimals: 18 };
+
+  // Build accounting arrays for all strategy tokens
+  const initialAssetAddresses: string[] = [];
+  const initialAssetAccountingAddresses: string[] = [];
+  for (const addr of strategyTokens) {
+    const accounting = findAccounting(factoryActiveAddresses, addr, 'assets');
+    if (accounting) {
+      initialAssetAddresses.push(addr);
+      initialAssetAccountingAddresses.push(accounting);
+    }
+  }
+
+  // Build the vault name based on type
+  const depositSymbols = depositWithdrawTokens.map(
+    t => tokenInfoMap.get(t.toLowerCase())?.symbol || 'TOKEN'
+  );
+  const vaultTypeName = vaultType === 'index_fund' ? 'Index Fund' : vaultType === 'lending' ? 'Lending Vault' : 'Vault';
+  const vaultName = `${depositSymbols.join('/')} ${vaultTypeName}`;
+
+  const template: Record<string, any> = {
+    name: `${vaultName} on ${chain}`,
+    vaultType,
+    denominator: {
+      symbol: denominatorInfo.symbol,
+      address: denominatorAddress,
+      decimals: denominatorInfo.decimals,
+    },
+    strategyTokens: strategyTokens.map(addr => {
+      const info = tokenInfoMap.get(addr.toLowerCase());
+      return { address: addr, symbol: info?.symbol || 'UNKNOWN', decimals: info?.decimals || 18 };
+    }),
+    depositWithdrawTokens: depositWithdrawTokens.map(addr => {
+      const info = tokenInfoMap.get(addr.toLowerCase());
+      return { address: addr, symbol: info?.symbol || 'UNKNOWN', decimals: info?.decimals || 18 };
+    }),
+    createVaultParams: {
+      name: `My ${vaultName}`,
+      symbol: `f${denominatorInfo.symbol}`,
+      assetDenominatorAddress: denominatorAddress,
+      initialDepositAmount: denominatorInfo.decimals <= 8 ? '1600' : '1000000000000000', // sensible default
+      depositFee: 0,
+      withdrawFee: 0,
+      managementFee: 0,
+      performanceFee: 0,
+      ...(initialAssetAddresses.length > 0 && { initialAssetAddresses }),
+      ...(initialAssetAccountingAddresses.length > 0 && { initialAssetAccountingAddresses }),
+      initialDepositAssetAddresses: depositWithdrawTokens,
+      initialWithdrawAssetAddresses: depositWithdrawTokens,
+    },
+    approvalStep: {
+      tool: 'factor_give_approval',
+      params: {
+        tokenAddress: denominatorAddress,
+        spenderAddress: factoryAddress,
+        amount: 'max',
+      },
+    },
+  };
+
+  // Type-specific enrichment
+  if (vaultType === 'lending') {
+    // For lending vaults, try to auto-detect the lending protocol from available tokens
+    let tokenlist: FactorTokenlist | null = null;
+    try {
+      tokenlist = new FactorTokenlist(getTokenlistChainId(chain));
+    } catch { /* tokenlist unavailable */ }
+
+    if (tokenlist) {
+      // Try Aave first, then Compound V3, then Morpho
+      const denominatorAccounting = findAccounting(factoryActiveAddresses, denominatorAddress, 'assets');
+      const lendingConfig: any =
+        buildAaveLendingConfig(contractAddresses, tokenlist, factoryActiveAddresses, denominatorAddress, denominatorInfo.symbol, denominatorAccounting) ||
+        buildCompoundV3LendingConfig(contractAddresses, tokenlist, factoryActiveAddresses, denominatorAddress, denominatorInfo.symbol, denominatorAccounting) ||
+        buildMorphoLendingConfig(contractAddresses, tokenlist, factoryActiveAddresses, denominatorAddress, denominatorInfo.symbol, denominatorAccounting);
+
+      if (lendingConfig) {
+        template.createVaultParams = {
+          ...template.createVaultParams,
+          ...lendingConfig.createVaultExtensions,
+        };
+        template.lending = {
+          protocol: lendingConfig.protocol,
+          ...(lendingConfig.lendingTokens && { tokens: lendingConfig.lendingTokens }),
+          ...(lendingConfig.protocolAdapter && { adapter: lendingConfig.protocolAdapter }),
+          ...(lendingConfig.protocolAdapters && { adapters: lendingConfig.protocolAdapters }),
+          ...(lendingConfig.availableMarkets && { availableMarkets: lendingConfig.availableMarkets }),
+          ...(lendingConfig.note && { note: lendingConfig.note }),
+        };
+        template.postDeploySteps = lendingConfig.postDeploySteps;
+      } else {
+        template.lendingNote = `No lending protocol auto-detected for ${denominatorInfo.symbol} on ${chain}. You can manually set up lending after vault creation using factor_add_adapter and factor_add_vault_token.`;
+      }
+    }
+  }
+
+  const workflow = [
+    '1. Review the template below and customize name/symbol if desired',
+    '2. Call factor_give_approval with the approvalStep params to approve the token for the factory',
+    '3. Call factor_create_vault with the createVaultParams',
+    '4. Use factor_get_transaction_status to check the deployment result',
+    ...(template.postDeploySteps ? ['5. Follow the postDeploySteps for any post-deploy configuration'] : []),
+    '',
+    'SIMULATION (no funds): If the wallet has no funds, skip step 2 and call factor_create_vault directly. It will return an INSUFFICIENT_ALLOWANCE error with a simulationHint containing a scriptRef. Pass that scriptRef to factor_run_forge_script to simulate the full deployment on a forked network.',
+  ];
+
+  return {
+    success: true,
+    mode: 'guided_template',
+    chain,
+    environment,
+    factoryAddress,
+    template,
+    workflow,
+  };
+}
+
 export const vaultTemplatesTool = {
   name: 'factor_vault_templates',
-  description: 'ALWAYS call this first when creating a vault. Returns ready-to-use createVaultParams for factor_create_vault. IMPORTANT: If the task involves lending/supplying, you MUST set lendingProtocol — this pre-configures everything so the vault deploys lending-ready in ONE transaction. "aave" adds the Aave adapter + aToken (interest-bearing) + variableDebtToken. "compoundV3" adds both Compound V3 adapters + cToken (market contract) + market registration step. "morpho" adds both Morpho adapters + registers collateral and loan tokens with Chainlink accounting + lists available markets to choose from. Without lendingProtocol you get a basic vault that requires many extra manual steps. Also returns postDeploySteps with exact tool calls for deposit + supply.',
+  description: 'ALWAYS call this first when creating a vault. Supports two modes: (1) GUIDED MODE — call with NO params to get a guided questionnaire with dynamically fetched token options from the chain. Present the questions to the user, collect answers, then call again with vaultType + strategyTokens + depositWithdrawTokens. (2) DIRECT MODE — call with denominator (and optionally lendingProtocol) for pre-configured templates. For lending vaults, set lendingProtocol to pre-configure adapters and tokens in one transaction.',
   inputSchema: {
     type: 'object',
     properties: {
       denominator: {
         type: 'string',
-        description: 'Filter by denominator token. If not provided, returns all available templates for the current chain.',
+        description: 'DIRECT MODE: Filter by denominator token. If not provided, returns all available templates for the current chain.',
         enum: ['USDC', 'USDC.e', 'USDbC', 'USDT', 'WETH'],
       },
       lendingProtocol: {
         type: 'string',
         enum: ['aave', 'compoundV3', 'morpho'],
-        description: 'Set this when the task involves lending or supplying. Each protocol has different token designs read from the tokenlist: "aave" → aToken (interest-bearing receipt) + variableDebtToken for borrowing. "compoundV3" → cToken (the market contract, e.g. cUSDCv3) + requires market registration post-deploy. "morpho" → collateralToken + loanToken per market, registered with Chainlink accounting + requires market selection and addMarketToAssetAndDebt post-deploy. The vault deploys ready for lending — no separate factor_add_adapter or factor_add_vault_token calls needed.',
+        description: 'DIRECT MODE: Set this when the task involves lending or supplying. Each protocol has different token designs read from the tokenlist.',
+      },
+      vaultType: {
+        type: 'string',
+        enum: ['index_fund', 'lending', 'general'],
+        description: 'GUIDED MODE: Type of vault to create. If not provided (and no denominator), returns a guided questionnaire with available options.',
+      },
+      strategyTokens: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'GUIDED MODE: Token addresses needed for the vault strategy (from questionnaire step 2).',
+      },
+      depositWithdrawTokens: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'GUIDED MODE: Token addresses users can deposit/withdraw (from questionnaire step 3). Must be a subset of strategyTokens.',
       },
     },
     required: [],
   },
-  handler: async (input: { denominator?: string; lendingProtocol?: LendingProtocol }) => {
+  handler: async (input: {
+    denominator?: string;
+    lendingProtocol?: LendingProtocol;
+    vaultType?: VaultType;
+    strategyTokens?: string[];
+    depositWithdrawTokens?: string[];
+  }) => {
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
+
+    // ──────────────────────────────────────────────────────────────────────
+    // GUIDED MODE: Questionnaire (no vaultType AND no denominator)
+    // ──────────────────────────────────────────────────────────────────────
+    if (!input.vaultType && !input.denominator && !input.lendingProtocol) {
+      try {
+        const availableTokens = await getAvailableTokens(chainId, environment);
+
+        return {
+          success: true,
+          mode: 'questionnaire',
+          chain,
+          questions: [
+            {
+              id: 'vaultType',
+              question: 'What kind of vault are you creating?',
+              options: [
+                { value: 'index_fund', label: 'Index Fund', description: 'Multi-asset vault that holds and rebalances a portfolio of tokens' },
+                { value: 'lending', label: 'Lending Vault', description: 'Vault that supplies assets to lending protocols (Aave, Compound, Morpho)' },
+                { value: 'general', label: 'General', description: 'Flexible vault for custom strategies' },
+              ],
+            },
+            {
+              id: 'strategyTokens',
+              question: 'Which tokens are needed for your strategy?',
+              description: 'Select the tokens your vault will interact with',
+              availableTokens,
+              multiSelect: true,
+            },
+            {
+              id: 'depositWithdrawTokens',
+              question: 'What tokens can users deposit & withdraw from your vault?',
+              description: 'Select from the strategy tokens above. These will be the vault\'s deposit/withdraw assets.',
+              note: 'Must be a subset of the strategy tokens selected above',
+              multiSelect: true,
+            },
+          ],
+          instructions: 'Present these questions to the user one at a time. After collecting all answers, call factor_vault_templates again with vaultType, strategyTokens, and depositWithdrawTokens.',
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: 'QUESTIONNAIRE_FETCH_ERROR',
+          message: `Could not fetch available tokens for ${chain}: ${err?.message || 'unknown error'}. You can still use direct mode by passing denominator.`,
+        };
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // GUIDED MODE: Template from answers (vaultType + strategyTokens + depositWithdrawTokens)
+    // ──────────────────────────────────────────────────────────────────────
+    if (input.vaultType && input.strategyTokens && input.depositWithdrawTokens) {
+      return await buildGuidedTemplate(input.vaultType, input.strategyTokens, input.depositWithdrawTokens, chain, chainId, environment);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // DIRECT MODE: Existing denominator + lendingProtocol flow
+    // ──────────────────────────────────────────────────────────────────────
 
     const tokens = TOKEN_ADDRESSES[chain];
     if (!tokens) {

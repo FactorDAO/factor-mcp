@@ -65,7 +65,7 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_get_factory_addresses` - Get whitelisted assets, adapters, and accounting addresses from factory
 - `factor_validate_vault_config` - Validate vault configuration before deployment
 - `factor_add_adapter` - Add a manager adapter to a vault
-- `factor_vault_templates` - **ALWAYS call this first when creating a vault.** Returns ready-to-use `createVaultParams` for `factor_create_vault`. **IMPORTANT: If the task involves lending, set `lendingProtocol`** — each protocol has its own token design: `"aave"` adds aToken + variableDebtToken, `"compoundV3"` adds cToken (market contract) + market registration step, `"morpho"` adds collateral/loan tokens with Chainlink accounting + market selection. The vault deploys lending-ready in one transaction. Available denominators: USDC, USDT, WETH (varies by chain).
+- `factor_vault_templates` - **ALWAYS call this first when creating a vault.** Supports two modes: (1) **Guided mode** — call with NO params to get a questionnaire with dynamically fetched token options; present questions to user, then call again with `vaultType`, `strategyTokens`, `depositWithdrawTokens`. (2) **Direct mode** — call with `denominator` and optionally `lendingProtocol` for pre-configured templates. For lending, set `lendingProtocol`: `"aave"`, `"compoundV3"`, or `"morpho"`. The vault deploys lending-ready in one transaction.
 
 ### Vault Management (12 tools)
 - `factor_set_withdraw_fee` - Set withdraw fee in basis points (0-10000)
@@ -397,9 +397,29 @@ Manager management (owner only):
 3. factor_execute_manager with vault address and steps array
 ```
 
-### Create a New Vault
+### Create a New Vault (Guided Flow — Recommended)
+`factor_vault_templates` supports a guided mode that walks the user through vault creation with dynamically fetched token options.
 ```
-1. factor_vault_templates to get pre-configured vault parameters for the current chain
+1. factor_vault_templates with NO params
+   → Returns a questionnaire with 3 questions:
+     a. "What kind of vault?" → index_fund, lending, or general
+     b. "Which tokens for your strategy?" → list of all whitelisted tokens on the chain (fetched live)
+     c. "What tokens can users deposit/withdraw?" → subset of strategy tokens
+   → Present these to the user and collect answers
+
+2. factor_vault_templates with vaultType, strategyTokens, depositWithdrawTokens
+   → Returns a ready-to-use template with createVaultParams tailored to the answers
+   → For lending vaults, auto-detects the best lending protocol
+
+3. factor_give_approval with the approvalStep params
+4. factor_create_vault with the createVaultParams
+5. Use factor_get_transaction_status to check the result
+6. Follow any postDeploySteps (e.g., market registration for Compound/Morpho)
+```
+
+### Create a New Vault (Direct Flow)
+```
+1. factor_vault_templates with denominator (e.g., "USDC") and optionally lendingProtocol
    - Returns ready-to-use createVaultParams and approvalStep for each denominator (USDC, USDT, WETH)
 2. factor_give_approval with the approvalStep params to approve the denominator token for the factory
 3. factor_create_vault with the createVaultParams (customize name/symbol as needed)
