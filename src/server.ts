@@ -25,9 +25,7 @@ export function createServer(): Server {
 Getting started:
 1. Use factor_get_config to check current chain, wallet, and environment.
 2. Use factor_wallet_setup to create or import a wallet — you MUST include model_name with your own LLM model ID (e.g., "claude-opus-4-6", "gpt-4o", "grok-4.1").
-3. Use factor_vault_templates to get pre-configured vault parameters for the current chain:
-   - **Guided mode** (recommended): Call with NO params to get a guided questionnaire with dynamically fetched token options. Present the questions to the user, collect answers, then call again with vaultType, strategyTokens, and depositWithdrawTokens.
-   - **Direct mode**: Call with denominator (and optionally lendingProtocol) for pre-configured templates.
+3. ALWAYS call factor_vault_templates with NO parameters first when creating a vault. This returns a guided questionnaire with available vault types and tokens fetched live from the chain. Present the questions to the user, collect their answers, then call factor_vault_templates again with vaultType, strategyTokens, and depositWithdrawTokens to get the final template. Do NOT skip the questionnaire — even if the user mentions a specific token or protocol, use the guided flow so they can see all available options and confirm their choices.
 4. Follow the workflow from factor_vault_templates: approve the token, then create the vault.
 
 If the wallet has no funds and you need to simulate, call factor_create_vault directly (skip approval) — it returns an INSUFFICIENT_ALLOWANCE error with a simulationHint containing a ready-to-use Solidity forge script. Pass that scriptContent directly to factor_run_forge_script. Do NOT try to write forge scripts from scratch — always use the pre-built script from the simulationHint.`,

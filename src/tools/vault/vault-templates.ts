@@ -626,7 +626,7 @@ async function buildGuidedTemplate(
 
 export const vaultTemplatesTool = {
   name: 'factor_vault_templates',
-  description: 'ALWAYS call this first when creating a vault. Supports two modes: (1) GUIDED MODE — call with NO params to get a guided questionnaire with dynamically fetched token options from the chain. Present the questions to the user, collect answers, then call again with vaultType + strategyTokens + depositWithdrawTokens. (2) DIRECT MODE — call with denominator (and optionally lendingProtocol) for pre-configured templates. For lending vaults, set lendingProtocol to pre-configure adapters and tokens in one transaction.',
+  description: 'ALWAYS call this with NO parameters first when creating a vault. Returns a guided questionnaire with vault types and available tokens fetched live from the chain. You MUST present the questions to the user, collect their answers, then call this tool again with vaultType, strategyTokens, and depositWithdrawTokens to get the final template. Do NOT skip the questionnaire even if the user mentions a specific protocol or token — always let them see the options and confirm. The only exception is if you are resuming a previous flow where the user already answered the questions.',
   inputSchema: {
     type: 'object',
     properties: {
