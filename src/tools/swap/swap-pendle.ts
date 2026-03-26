@@ -126,7 +126,8 @@ export const swapPendleTool = {
 
       const baseParams: Record<string, unknown> = {
         marketAddress: validated.marketAddress,
-        tokenAddress: validated.tokenAddress,
+        tokenInAddress: validated.tokenAddress,
+        tokenOutAddress: validated.tokenAddress,
       };
 
       if (validated.approxParams) {
@@ -136,19 +137,23 @@ export const swapPendleTool = {
       switch (validated.direction) {
         case 'tokenToPT':
           block = isAll
-            ? (strategyBuilder.adapter as any).pendlePy.swapExactTokenForPTAll(baseParams)
-            : (strategyBuilder.adapter as any).pendlePy.swapExactTokenForPT({ ...baseParams, amountBN: validated.amount });
+            ? (strategyBuilder.adapter as any).pendlePy.swapExactTokenForPTAll({ ...baseParams, minAmountOutBN: '0' })
+            : (strategyBuilder.adapter as any).pendlePy.swapExactTokenForPT({ ...baseParams, amountInBN: validated.amount, minAmountOutBN: '0' });
           break;
         case 'tokenToYT':
           block = isAll
-            ? (strategyBuilder.adapter as any).pendlePy.swapExactTokenForYtAll(baseParams)
-            : (strategyBuilder.adapter as any).pendlePy.swapExactTokenForYt({ ...baseParams, amountBN: validated.amount });
+            ? (strategyBuilder.adapter as any).pendlePy.swapExactTokenForYtAll({ ...baseParams, minAmountOutBN: '0' })
+            : (strategyBuilder.adapter as any).pendlePy.swapExactTokenForYt({ ...baseParams, amountInBN: validated.amount, minAmountOutBN: '0' });
           break;
         case 'ptToToken':
-          block = (strategyBuilder.adapter as any).pendlePy.swapExactPTForToken({ ...baseParams, amountBN: validated.amount });
+          block = isAll
+            ? (strategyBuilder.adapter as any).pendlePy.swapExactPtForTokenAll({ ...baseParams, minAmountOutBN: '0' })
+            : (strategyBuilder.adapter as any).pendlePy.swapExactPTForToken({ ...baseParams, amountInBN: validated.amount, minAmountOutBN: '0' });
           break;
         case 'ytToToken':
-          block = (strategyBuilder.adapter as any).pendlePy.swapExactYtForToken({ ...baseParams, amountBN: validated.amount });
+          block = isAll
+            ? (strategyBuilder.adapter as any).pendlePy.swapExactYtForTokenAll({ ...baseParams, minAmountOutBN: '0' })
+            : (strategyBuilder.adapter as any).pendlePy.swapExactYtForToken({ ...baseParams, amountInBN: validated.amount, minAmountOutBN: '0' });
           break;
       }
 

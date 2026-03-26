@@ -1,6 +1,6 @@
 {
   "name": "@factordao/mcp-server",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "MCP server for Factor Protocol vault management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,8 +29,8 @@
   "author": "Factor DAO",
   "license": "MIT",
   "dependencies": {
-    "@factordao/sdk": "pro-beta",
-    "@factordao/sdk-studio": "pro-beta",
+    "@factordao/sdk": "2.1.14",
+    "@factordao/sdk-studio": "2.1.14",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^1.10.14",
     "zod": "^3.22.4"
