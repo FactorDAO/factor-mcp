@@ -29,8 +29,8 @@
   "author": "Factor DAO",
   "license": "MIT",
   "dependencies": {
-    "@factordao/sdk": "2.1.14",
-    "@factordao/sdk-studio": "2.1.14",
+    "@factordao/sdk": "2.1.16",
+    "@factordao/sdk-studio": "2.1.16",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^1.10.14",
     "zod": "^3.22.4"
