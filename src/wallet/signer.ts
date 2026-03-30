@@ -14,6 +14,7 @@ import { getPrivateKey, getWalletAddress } from './key-manager.js';
 import { configManager } from '../config/index.js';
 import { TransactionError, WalletError, InsufficientBalanceError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { buildAgentAuthorization } from './eip7702.js';
 
 export interface TransactionParams {
   to: `0x${string}`;
@@ -171,6 +172,11 @@ export async function sendTransaction(
     throw new WalletError('No wallet configured - use factor_wallet_setup first');
   }
 
+  // EIP-7702 gas sponsorship: relay through the Kairos BE treasury
+  if (configManager.isGasSponsorshipEnabled()) {
+    return sendSponsoredTransaction(params, walletName, password);
+  }
+
   const walletClient = getWalletClient(walletName, password);
   const account = walletClient.account;
 
@@ -252,6 +258,86 @@ export async function sendTransaction(
 
     throw new TransactionError('Failed to send transaction', error);
   }
+}
+
+/**
+ * EIP-7702 sponsored transaction: sign an authorization delegating the agent
+ * EOA to the ERC-7821 contract, then POST to the Kairos BE relay endpoint.
+ * The treasury wallet submits the Type 4 tx and pays gas.
+ */
+async function sendSponsoredTransaction(
+  params: TransactionParams,
+  walletName: string,
+  password?: string,
+): Promise<TransactionResult> {
+  const sponsorUrl = configManager.getGasSponsorUrl()!;
+  const agentToken = configManager.getAgentToken();
+  const delegateAddress = configManager.getErc7821DelegateAddress()!;
+  const chainId = configManager.getChainId();
+  const from = getWalletAddress(walletName) as `0x${string}`;
+
+  // Simulation mode check
+  if (configManager.isSimulationMode()) {
+    logger.info('Simulation mode (sponsored) - transaction not relayed');
+    return {
+      hash: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hash,
+      from,
+      to: params.to,
+      value: (params.value ?? 0n).toString(),
+      simulationMode: true,
+    };
+  }
+
+  // Get agent private key and sign EIP-7702 authorization
+  const privateKey = getPrivateKey(walletName, password) as `0x${string}`;
+  const authorization = await buildAgentAuthorization(privateKey, chainId, delegateAddress);
+
+  logger.info(`Relaying sponsored tx to ${params.to} via ${sponsorUrl}`);
+
+  const body = {
+    to: params.to,
+    data: params.data || '0x',
+    value: (params.value ?? 0n).toString(),
+    authorization: {
+      chainId: authorization.chainId,
+      contractAddress: authorization.contractAddress,
+      nonce: authorization.nonce,
+      r: authorization.r,
+      s: authorization.s,
+      v: authorization.v,
+    },
+    chain: configManager.getConfig().chain,
+  };
+
+  const res = await fetch(sponsorUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(agentToken ? { Authorization: `Bearer ${agentToken}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let errorMsg = text;
+    try {
+      const json = JSON.parse(text) as { error?: string };
+      if (json.error) errorMsg = json.error;
+    } catch { /* keep raw text */ }
+    throw new TransactionError(`Relay failed (${res.status}): ${errorMsg}`);
+  }
+
+  const { hash } = (await res.json()) as { hash: string };
+  logger.info(`Sponsored transaction relayed: ${hash}`);
+
+  return {
+    hash: hash as Hash,
+    from,
+    to: params.to,
+    value: (params.value ?? 0n).toString(),
+    simulationMode: false,
+  };
 }
 
 export async function signMessage(message: string, password?: string): Promise<string> {

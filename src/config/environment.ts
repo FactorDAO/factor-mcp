@@ -28,6 +28,10 @@ export interface EnvironmentConfig {
   walletPassword: string | undefined;
   activeWallet: string | undefined;
   environment: FactorEnvironment;
+  // EIP-7702 gas sponsorship
+  gasSponsorUrl: string | undefined;
+  agentToken: string | undefined;
+  erc7821DelegateAddress: string | undefined;
 }
 
 function ensureConfigDir(): void {
@@ -126,5 +130,9 @@ export function loadEnvironment(): EnvironmentConfig {
     walletPassword,
     activeWallet: jsonConfig.activeWallet,
     environment,
+    // EIP-7702 gas sponsorship
+    gasSponsorUrl: process.env.GAS_SPONSOR_URL || undefined,
+    agentToken: process.env.AGENT_TOKEN || undefined,
+    erc7821DelegateAddress: process.env.ERC7821_DELEGATE_ADDRESS || undefined,
   };
 }

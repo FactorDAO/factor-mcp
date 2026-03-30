@@ -110,6 +110,23 @@ class ConfigManager {
     return this.env.environment;
   }
 
+  // EIP-7702 gas sponsorship
+  getGasSponsorUrl(): string | undefined {
+    return this.env.gasSponsorUrl;
+  }
+
+  getAgentToken(): string | undefined {
+    return this.env.agentToken;
+  }
+
+  getErc7821DelegateAddress(): string | undefined {
+    return this.env.erc7821DelegateAddress;
+  }
+
+  isGasSponsorshipEnabled(): boolean {
+    return Boolean(this.env.gasSponsorUrl && this.env.erc7821DelegateAddress);
+  }
+
   getModelName(): string {
     return loadJsonConfig().modelName || 'AI';
   }
