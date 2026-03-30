@@ -456,6 +456,31 @@ export const createVaultTool = {
 
       const result = await sendTransaction(txParams, validated.password);
 
+      // Wait for receipt and decode vault address from logs
+      let vaultAddress: string | null = null;
+      try {
+        const publicClient = getPublicClient();
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: result.hash as `0x${string}`,
+          timeout: 60_000,
+        });
+
+        if (receipt.status === 'success') {
+          // Find the vault address from Transfer(address(0), ...) log (share minting)
+          for (const log of receipt.logs) {
+            if (
+              log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef' &&
+              log.topics[1] === '0x0000000000000000000000000000000000000000000000000000000000000000'
+            ) {
+              vaultAddress = log.address;
+              break;
+            }
+          }
+        }
+      } catch {
+        // Receipt wait failed — return hash without address
+      }
+
       return {
         success: true,
         simulationMode: false,
@@ -473,8 +498,11 @@ export const createVaultTool = {
           },
         },
         transactionHash: result.hash,
+        vaultAddress: vaultAddress || 'pending — use factor_get_transaction_status to check',
         chain,
-        note: 'Vault creation transaction submitted. Use factor_get_transaction_status to check the result.',
+        note: vaultAddress
+          ? `Vault deployed at ${vaultAddress}. Use this address for all subsequent operations.`
+          : 'Vault creation transaction submitted. Use factor_get_transaction_status to check the result.',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError) {

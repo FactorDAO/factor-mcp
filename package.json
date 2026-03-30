@@ -1,6 +1,6 @@
 {
   "name": "@factordao/mcp-server",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "MCP server for Factor Protocol vault management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
