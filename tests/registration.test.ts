@@ -60,9 +60,13 @@ const EXPECTED_TOOL_NAMES = [
   'factor_lend_borrow',
   'factor_lend_repay',
 
-  // Profile (2)
+  // Profile & IPFS (3)
   'factor_save_profile',
   'factor_get_profile',
+  'factor_upload_ipfs',
+
+  // Vault Metadata (1)
+  'factor_save_vault_metadata',
 
   // Strategy (5)
   'factor_list_adapters',

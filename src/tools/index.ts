@@ -20,6 +20,7 @@ import { getFactoryAddressesTool } from './vault/get-factory-addresses.js';
 import { validateVaultConfigTool } from './vault/validate-vault-config.js';
 import { addAdapterTool } from './vault/add-adapter.js';
 import { vaultTemplatesTool } from './vault/vault-templates.js';
+import { saveVaultMetadataTool } from './vault/save-vault-metadata.js';
 
 // Vault Management tools
 import { setWithdrawFeeTool } from './vault/manage-fees.js';
@@ -51,6 +52,7 @@ import { lendRepayTool } from './lending/lend-repay.js';
 // Profile tools
 import { saveProfileTool } from './profile/save-profile.js';
 import { getProfileTool } from './profile/get-profile.js';
+import { uploadIpfsTool } from './profile/upload-ipfs.js';
 
 // Strategy tools
 import { listAdaptersTool } from './strategy/list-adapters.js';
@@ -130,6 +132,8 @@ export {
   lendRepayTool,
   saveProfileTool,
   getProfileTool,
+  uploadIpfsTool,
+  saveVaultMetadataTool,
   listAdaptersTool,
   saveStrategyTool,
   deleteStrategyTool,
@@ -206,9 +210,13 @@ export const allTools = [
   lendBorrowTool,
   lendRepayTool,
 
-  // Profile (2)
+  // Profile & IPFS (3)
   saveProfileTool,
   getProfileTool,
+  uploadIpfsTool,
+
+  // Vault Metadata (1)
+  saveVaultMetadataTool,
 
   // Strategy (5)
   listAdaptersTool,
@@ -288,6 +296,8 @@ export type ToolName =
   | 'factor_lend_repay'
   | 'factor_save_profile'
   | 'factor_get_profile'
+  | 'factor_upload_ipfs'
+  | 'factor_save_vault_metadata'
   | 'factor_list_adapters'
   | 'factor_save_strategy'
   | 'factor_delete_strategy'
