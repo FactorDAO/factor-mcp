@@ -43,7 +43,7 @@ function getChainIdEnum(chain: string): ChainId {
 
 export const pendleLpTool = {
   name: 'factor_pendle_lp',
-  description: 'Pendle LP operations through a Factor vault. Add/remove liquidity to Pendle markets and collect fees. Available on Arbitrum and Base.',
+  description: 'Pendle LP operations through a Factor vault. Add/remove liquidity to Pendle markets and collect fees. Available on Arbitrum and Ethereum.',
   inputSchema: {
     type: 'object',
     properties: {

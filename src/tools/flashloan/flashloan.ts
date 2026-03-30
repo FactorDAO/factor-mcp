@@ -19,7 +19,7 @@ const strategyStepSchema = z.object({
 
 export const flashloanSchema = z.object({
   vaultAddress: z.string(),
-  provider: z.enum(['aave', 'morpho']),
+  provider: z.enum(['balancer']),
   loans: z.array(loanSchema).min(1),
   strategySteps: z.array(strategyStepSchema).min(1),
   password: z.string().optional(),
@@ -42,7 +42,7 @@ function getChainIdEnum(chain: string): ChainId {
 
 export const flashloanTool = {
   name: 'factor_flashloan',
-  description: 'Execute a flash loan strategy through a Factor vault. Borrows tokens within a single transaction, executes strategy steps, then repays. Supports Aave and Morpho flash loan providers. The strategy steps define what to do with the borrowed funds (e.g., swap, supply collateral, etc.).',
+  description: 'Execute a flash loan strategy through a Factor vault. Borrows tokens within a single transaction, executes strategy steps, then repays. Uses Balancer flash loan provider (deployed on Arbitrum, Base, and Ethereum). The strategy steps define what to do with the borrowed funds (e.g., swap, supply collateral, etc.).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -52,8 +52,8 @@ export const flashloanTool = {
       },
       provider: {
         type: 'string',
-        enum: ['aave', 'morpho'],
-        description: 'Flash loan provider: aave or morpho',
+        enum: ['balancer'],
+        description: 'Flash loan provider: balancer',
       },
       loans: {
         type: 'array',
@@ -156,11 +156,10 @@ export const flashloanTool = {
       }
 
       // Build flash loan wrapper
-      const flAdapterId = validated.provider === 'aave' ? 'aaveFL' : 'morphoFL';
-      const flAdapter = (strategyBuilder.adapter as any)[flAdapterId];
+      const flAdapter = (strategyBuilder.adapter as any).balancerFL;
 
       if (!flAdapter) {
-        throw new VaultError(`Flash loan adapter "${flAdapterId}" not available`);
+        throw new VaultError('Flash loan adapter "balancerFL" not available');
       }
 
       // Get the inner strategy blocks as transaction data for the flash loan callback

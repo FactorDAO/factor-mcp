@@ -92,9 +92,9 @@ describe('LP Tool Schemas', () => {
     expect(req).toContain('tickUpper');
   });
 
-  it('create_position protocol has uniswapV3, camelotV3, aerodrome', () => {
+  it('create_position protocol has uniswapV3', () => {
     expect(createPos.inputSchema.properties.protocol.enum).toEqual(
-      expect.arrayContaining(['uniswapV3', 'camelotV3', 'aerodrome'])
+      expect.arrayContaining(['uniswapV3'])
     );
   });
 
@@ -113,30 +113,11 @@ describe('LP Tool Schemas', () => {
 });
 
 describe('Yield Tool Schemas', () => {
-  const gmx = (allTools as any[]).find(t => t.name === 'factor_gmx');
   const pendleLp = (allTools as any[]).find(t => t.name === 'factor_pendle_lp');
-  const penpie = (allTools as any[]).find(t => t.name === 'factor_penpie');
-
-  it('gmx requires vaultAddress and action', () => {
-    expect(gmx.inputSchema.required).toContain('vaultAddress');
-    expect(gmx.inputSchema.required).toContain('action');
-  });
-
-  it('gmx has stake, stakeAll, unstake, claim actions', () => {
-    expect(gmx.inputSchema.properties.action.enum).toEqual(
-      expect.arrayContaining(['stake', 'stakeAll', 'unstake', 'claim'])
-    );
-  });
 
   it('pendle_lp has addLiquidity, removeLiquidity, collectFees actions', () => {
     expect(pendleLp.inputSchema.properties.action.enum).toEqual(
       expect.arrayContaining(['addLiquidity', 'removeLiquidity', 'collectFees'])
-    );
-  });
-
-  it('penpie has deposit, depositAll, withdraw, withdrawAll actions', () => {
-    expect(penpie.inputSchema.properties.action.enum).toEqual(
-      expect.arrayContaining(['deposit', 'depositAll', 'withdraw', 'withdrawAll'])
     );
   });
 });
@@ -151,9 +132,9 @@ describe('Flashloan Tool Schema', () => {
     expect(fl.inputSchema.required).toContain('strategySteps');
   });
 
-  it('provider has aave and morpho', () => {
+  it('provider has balancer', () => {
     expect(fl.inputSchema.properties.provider.enum).toEqual(
-      expect.arrayContaining(['aave', 'morpho'])
+      expect.arrayContaining(['balancer'])
     );
   });
 });

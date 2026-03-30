@@ -6,7 +6,7 @@ import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 
-const protocolEnum = z.enum(['uniswapV3', 'camelotV3', 'aerodrome']);
+const protocolEnum = z.enum(['uniswapV3']);
 
 export const lpRemoveLiquiditySchema = z.object({
   vaultAddress: z.string(),
@@ -33,13 +33,11 @@ function getChainIdEnum(chain: string): ChainId {
 
 const adapterMap: Record<string, string> = {
   uniswapV3: 'uniswapV3Lp',
-  camelotV3: 'camelotV3Lp',
-  aerodrome: 'aerodromeLp',
 };
 
 export const lpRemoveLiquidityTool = {
   name: 'factor_lp_remove_liquidity',
-  description: 'Remove liquidity from a concentrated liquidity position through a Factor vault. Supports Uniswap V3, Camelot V3 (Arbitrum), and Aerodrome (Base). Use liquidity "all" to remove all liquidity.',
+  description: 'Remove liquidity from a concentrated liquidity position through a Factor vault. Supports Uniswap V3 (Ethereum). Use liquidity "all" to remove all liquidity.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -49,7 +47,7 @@ export const lpRemoveLiquidityTool = {
       },
       protocol: {
         type: 'string',
-        enum: ['uniswapV3', 'camelotV3', 'aerodrome'],
+        enum: ['uniswapV3'],
         description: 'The LP protocol to use',
       },
       tokenId: {
@@ -75,11 +73,8 @@ export const lpRemoveLiquidityTool = {
     }
 
     const chain = configManager.getConfig().chain;
-    if (validated.protocol === 'camelotV3' && chain !== 'ARBITRUM_ONE') {
-      throw new VaultError('Camelot V3 is only available on Arbitrum');
-    }
-    if (validated.protocol === 'aerodrome' && chain !== 'BASE') {
-      throw new VaultError('Aerodrome is only available on Base');
+    if (chain !== 'MAINNET') {
+      throw new VaultError('Uniswap V3 LP (Pro adapter) is currently only available on Ethereum. Use factor_get_address_book to check adapter availability on your chain.');
     }
 
     const walletName = configManager.getWalletName();

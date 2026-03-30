@@ -83,10 +83,8 @@ const EXPECTED_TOOL_NAMES = [
   'factor_lp_remove_liquidity',
   'factor_lp_collect_fees',
 
-  // Yield (3)
-  'factor_gmx',
+  // Yield (1)
   'factor_pendle_lp',
-  'factor_penpie',
 
   // Flash Loan (1)
   'factor_flashloan',

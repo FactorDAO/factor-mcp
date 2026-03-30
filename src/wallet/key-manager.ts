@@ -5,6 +5,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { encrypt, decrypt, isEncrypted, type EncryptedData } from './encryption.js';
 import { WalletError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { configManager } from '../config/index.js';
 import { decryptKeystoreV3 } from './keystore-crypto.js';
 import {
   foundryWalletExists,
@@ -237,25 +238,28 @@ export function getPrivateKey(name: string, password?: string): string {
     throw new WalletError(`Wallet "${name}" not found in factor-mcp or Foundry keystore`);
   }
 
+  // Fall back to WALLET_PASSWORD env var when no explicit password is provided
+  const effectivePassword = password || configManager.getWalletPassword();
+
   if (storage === 'foundry-keystore') {
-    if (!password) {
+    if (!effectivePassword) {
       throw new WalletError('Password required for Foundry keystore wallet');
     }
     const keystore = readFoundryKeystore(name);
-    return decryptKeystoreV3(keystore, password);
+    return decryptKeystoreV3(keystore, effectivePassword);
   }
 
   // factor-mcp storage
   const wallet = getWallet(name);
 
   if (wallet.encrypted) {
-    if (!password) {
+    if (!effectivePassword) {
       throw new WalletError('Password required for encrypted wallet');
     }
     if (!wallet.encryptedKey) {
       throw new WalletError('Encrypted wallet is missing key data');
     }
-    return decrypt(wallet.encryptedKey, password);
+    return decrypt(wallet.encryptedKey, effectivePassword);
   }
 
   if (!wallet.privateKey) {

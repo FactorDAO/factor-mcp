@@ -35,7 +35,7 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - **production** - Production contracts
 - **testing** - Testing/staging contracts (default for development)
 
-## Available Tools (68 total)
+## Available Tools (66 total)
 
 ### Configuration (5 tools)
 - `factor_get_config` - View current configuration (chain, RPC, wallet, simulation mode, environment)
@@ -82,10 +82,10 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_set_risk_manager` - Set the risk manager address
 
 ### Lending Operations (4 tools)
-- `factor_lend_supply` - Supply/deposit assets to a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2). Supports Morpho collateral operations.
-- `factor_lend_withdraw` - Withdraw supplied assets from a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2). Supports Morpho collateral withdrawal.
-- `factor_lend_borrow` - Borrow assets from a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2)
-- `factor_lend_repay` - Repay borrowed assets to a lending protocol (Aave, Compound V3, Morpho, Silo, Silo V2)
+- `factor_lend_supply` - Supply/deposit assets to a lending protocol (Aave, Compound V3, Morpho). Morpho on Base/Ethereum only. Supports Morpho collateral operations.
+- `factor_lend_withdraw` - Withdraw supplied assets from a lending protocol (Aave, Compound V3, Morpho). Supports Morpho collateral withdrawal.
+- `factor_lend_borrow` - Borrow assets from a lending protocol (Aave, Compound V3, Morpho)
+- `factor_lend_repay` - Repay borrowed assets to a lending protocol (Aave, Compound V3, Morpho)
 
 ### Swap Operations (4 tools)
 - `factor_swap` - Execute Uniswap V3 exact input swaps (specify how much to spend). Supports "all", percentages, and fee tiers (100/500/3000/10000).
@@ -94,18 +94,16 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 - `factor_swap_pendle` - Execute Pendle PT/YT swaps. Swap between tokens and Principal/Yield tokens.
 
 ### LP Operations (4 tools)
-- `factor_lp_create_position` - Create concentrated liquidity position (Uniswap V3, Camelot V3, Aerodrome)
+- `factor_lp_create_position` - Create concentrated liquidity position (Uniswap V3, Ethereum only)
 - `factor_lp_add_liquidity` - Add liquidity to an existing LP position
 - `factor_lp_remove_liquidity` - Remove liquidity from an LP position
 - `factor_lp_collect_fees` - Collect accumulated trading fees from an LP position
 
-### Yield & Perp Operations (3 tools)
-- `factor_gmx` - GMX staking operations (Arbitrum): stake, unstake, claim rewards
-- `factor_pendle_lp` - Pendle LP operations: add/remove liquidity, collect fees
-- `factor_penpie` - Penpie yield operations (Arbitrum): deposit/withdraw Pendle LP tokens
+### Yield Operations (1 tool)
+- `factor_pendle_lp` - Pendle LP operations (Arbitrum, Ethereum): add/remove liquidity, collect fees
 
 ### Flash Loan (1 tool)
-- `factor_flashloan` - Execute flash loan strategies (Aave or Morpho provider). Borrows, executes inner strategy steps, and repays in a single transaction.
+- `factor_flashloan` - Execute flash loan strategies (Balancer provider, all chains). Borrows, executes inner strategy steps, and repays in a single transaction.
 
 ### Strategy Building (4 tools)
 - `factor_list_adapters` - List available protocol adapters (chain-aware, 30+ adapters)
@@ -140,38 +138,21 @@ These are the SDK property names used as `protocol`/`adapter` parameter values:
 - `aave` - Aave V3 (Arb/Base/Mainnet)
 - `compoundV3` - Compound V3 (Arb/Base/Mainnet)
 - `compoundV3Market` - Compound V3 market management
-- `morpho` - Morpho (Arb/Base/Mainnet) - includes collateral ops
-- `silo` - Silo V1 (Arb) - requires `silo(marketAddress)` pattern
-- `siloV2` - Silo V2 (Base)
-- `tender` - Tender (Arb) - Compound-compatible: mintBN/redeemBN
-- `lodestar` - Lodestar (Arb) - Compound-compatible: mintBN/redeemBN
+- `morpho` - Morpho (Base/Mainnet) - includes collateral ops. NOT deployed on Arbitrum.
 
 ### DEX
 - `uniswap` - Uniswap V3 swaps (Arb/Base/Mainnet)
-- `openOcean` - OpenOcean aggregator (Arb/Base)
-- `aqua` - Aqua DEX (Base)
-- `pendlePy` - Pendle PT/YT swaps (Arb/Base)
+- `openOcean` - OpenOcean aggregator (Arb/Base/Mainnet)
+- `pendlePy` - Pendle PT/YT swaps (Arb/Base/Mainnet)
 
 ### LP
-- `uniswapV3Lp` - Uniswap V3 concentrated liquidity (Arb/Base/Mainnet)
-- `camelotV3Lp` - Camelot V3 LP (Arb)
-- `aerodromeLp` - Aerodrome LP (Base)
+- `uniswapV3Lp` - Uniswap V3 concentrated liquidity (Mainnet only)
 
 ### Yield
-- `pendle` - Pendle LP (Arb/Base)
-- `penpie` - Penpie (Arb)
-- `pirex` - Pirex GMX wrapper (Arb)
-- `umami` - Umami yield vaults (Arb)
-- `yieldVault` - Generic yield vault (Arb/Base)
-
-### Perp
-- `gmx` - GMX (Arb)
-- `gns` - Gains Network (Arb)
-- `glpV2` - GLP V2 (Arb)
+- `pendle` - Pendle LP (Arb/Mainnet)
 
 ### Flash Loans
-- `aaveFL` - Aave flash loans (Arb/Base/Mainnet)
-- `morphoFL` - Morpho flash loans (Arb/Base/Mainnet)
+- `balancerFL` - Balancer flash loans (Arb/Base/Mainnet)
 
 ### Policy/Management
 - `adapterManagement` - Add/remove adapters
@@ -320,10 +301,8 @@ Once the vault is set up (adapter + tokens + market registered), use these tools
 ```
 Supply to Aave:       factor_lend_supply with protocol: "aave", assetAddress, amount
 Supply to Compound:   factor_lend_supply with protocol: "compoundV3", marketAddress, assetAddress, amount
-Supply to Morpho:     factor_lend_supply with protocol: "morpho", marketId, amount
+Supply to Morpho:     factor_lend_supply with protocol: "morpho", marketId, amount (Base/Ethereum only)
 Supply to Morpho (collateral): factor_lend_supply with protocol: "morpho", marketId, amount, collateral: true
-Supply to Silo V1:    factor_lend_supply with protocol: "silo", siloMarketAddress, assetAddress, amount
-Supply to Silo V2:    factor_lend_supply with protocol: "siloV2", assetAddress, amount
 
 Withdraw, borrow, and repay follow the same pattern with factor_lend_withdraw, factor_lend_borrow, factor_lend_repay.
 ```
@@ -338,7 +317,7 @@ Pendle PT/YT swap:         factor_swap_pendle with marketAddress, direction, tok
 
 ### LP Quick Reference
 ```
-Create position:    factor_lp_create_position with protocol (uniswapV3/camelotV3/aerodrome), token0, token1, amounts, tickLower, tickUpper
+Create position:    factor_lp_create_position with protocol (uniswapV3), token0, token1, amounts, tickLower, tickUpper (Ethereum only)
 Add liquidity:      factor_lp_add_liquidity with protocol, tokenId, amount0, amount1
 Remove liquidity:   factor_lp_remove_liquidity with protocol, tokenId, liquidity ("all" or amount)
 Collect fees:       factor_lp_collect_fees with protocol, tokenId

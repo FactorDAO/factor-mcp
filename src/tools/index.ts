@@ -72,9 +72,7 @@ import { lpRemoveLiquidityTool } from './lp/lp-remove-liquidity.js';
 import { lpCollectFeesTool } from './lp/lp-collect-fees.js';
 
 // Yield tools
-import { gmxTool } from './yield/gmx.js';
 import { pendleLpTool } from './yield/pendle-lp.js';
-import { penpieTool } from './yield/penpie.js';
 
 // Flash loan tools
 import { flashloanTool } from './flashloan/flashloan.js';
@@ -145,9 +143,7 @@ export {
   lpAddLiquidityTool,
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
-  gmxTool,
   pendleLpTool,
-  penpieTool,
   flashloanTool,
   previewTransactionTool,
   getTransactionStatusTool,
@@ -233,10 +229,8 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // Yield (3)
-  gmxTool,
+  // Yield (1)
   pendleLpTool,
-  penpieTool,
 
   // Flash Loan (1)
   flashloanTool,
@@ -307,9 +301,7 @@ export type ToolName =
   | 'factor_lp_add_liquidity'
   | 'factor_lp_remove_liquidity'
   | 'factor_lp_collect_fees'
-  | 'factor_gmx'
   | 'factor_pendle_lp'
-  | 'factor_penpie'
   | 'factor_flashloan'
   | 'factor_preview_transaction'
   | 'factor_get_transaction_status'
