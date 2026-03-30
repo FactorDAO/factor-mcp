@@ -9,6 +9,7 @@
  */
 import { keccak256, toHex, concatHex, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { secp256k1 } from '@noble/curves/secp256k1';
 import { getPublicClient } from './signer.js';
 
 /** Signed EIP-7702 authorization object (matches viem v2 AuthorizationList format). */
@@ -92,6 +93,10 @@ export function hashAuthorization(params: {
 /**
  * Sign an EIP-7702 authorization.
  * The agent's private key signs the authorization to delegate to `contractAddress`.
+ *
+ * IMPORTANT: EIP-7702 requires a raw ECDSA signature over the authorization hash.
+ * Do NOT use `signMessage` — it adds the EIP-191 prefix ("\x19Ethereum Signed Message\n...")
+ * which produces a wrong signature that the EVM silently skips.
  */
 export async function signAuthorization(params: {
   chainId: number;
@@ -106,13 +111,15 @@ export async function signAuthorization(params: {
   });
 
   const account = privateKeyToAccount(params.privateKey);
-  // Use viem's account.signMessage with raw hash
-  const signature = await account.signMessage({ message: { raw: hexToBytes(hash) } });
 
-  // Parse r, s, v from the 65-byte signature
-  const r = `0x${signature.slice(2, 66)}` as Hex;
-  const s = `0x${signature.slice(66, 130)}` as Hex;
-  const v = parseInt(signature.slice(130, 132), 16);
+  // Raw ECDSA sign — no EIP-191 prefix
+  const hashBytes = hexToBytes(hash);
+  const pkClean = params.privateKey.startsWith('0x') ? params.privateKey.slice(2) : params.privateKey;
+  const sig = secp256k1.sign(hashBytes, pkClean);
+
+  const r = `0x${sig.r.toString(16).padStart(64, '0')}` as Hex;
+  const s = `0x${sig.s.toString(16).padStart(64, '0')}` as Hex;
+  const v = sig.recovery + 27;
 
   return {
     chainId: params.chainId,
