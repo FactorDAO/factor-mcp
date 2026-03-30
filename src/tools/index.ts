@@ -35,6 +35,7 @@ import { setPriceDeviationAllowanceTool } from './vault/manage-risk.js';
 import { addVaultManagerTool } from './vault/manage-managers.js';
 import { removeVaultManagerTool } from './vault/manage-managers.js';
 import { setRiskManagerTool } from './vault/manage-managers.js';
+import { transferOwnershipTool } from './vault/transfer-ownership.js';
 
 // Tokenlist tools
 import { getLendingTokensTool } from './tokenlist/get-lending-tokens.js';
@@ -123,6 +124,7 @@ export {
   addVaultManagerTool,
   removeVaultManagerTool,
   setRiskManagerTool,
+  transferOwnershipTool,
   getLendingTokensTool,
   addVaultTokenTool,
   approveTool,
@@ -196,6 +198,7 @@ export const allTools = [
   addVaultManagerTool,
   removeVaultManagerTool,
   setRiskManagerTool,
+  transferOwnershipTool,
 
   // Tokenlist (2)
   getLendingTokensTool,

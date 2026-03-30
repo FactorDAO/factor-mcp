@@ -27,3 +27,6 @@ export { setPriceDeviationAllowanceTool } from './manage-risk.js';
 export { addVaultManagerTool } from './manage-managers.js';
 export { removeVaultManagerTool } from './manage-managers.js';
 export { setRiskManagerTool } from './manage-managers.js';
+
+// Vault Management - Ownership
+export { transferOwnershipTool } from './transfer-ownership.js';
