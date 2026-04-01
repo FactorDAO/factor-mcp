@@ -200,6 +200,10 @@ export const createVaultTool = {
         type: 'string',
         description: 'Wallet password if encrypted',
       },
+      ownerAddress: {
+        type: 'string',
+        description: 'Owner address for vault (required in stateless mode). This address will be the vault owner and fee receiver.',
+      },
     },
     required: ['name', 'symbol', 'assetDenominatorAddress'],
   },
@@ -210,12 +214,21 @@ export const createVaultTool = {
       throw new VaultError('Invalid asset denominator address');
     }
 
+    let userAddress: Address;
     const walletName = configManager.getWalletName();
-    if (!walletName) {
+    if (walletName) {
+      userAddress = getWalletAddress(walletName) as Address;
+    } else if (configManager.isStateless()) {
+      // Stateless mode: ownerAddress parameter required for feeReceiver/owner in calldata
+      const ownerAddr = (input as Record<string, unknown>).ownerAddress as string | undefined;
+      if (ownerAddr && isAddress(ownerAddr)) {
+        userAddress = ownerAddr as Address;
+      } else {
+        throw new VaultError('Stateless mode requires ownerAddress parameter (the wallet that will own the vault and receive fees).');
+      }
+    } else {
       throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
     }
-
-    const userAddress = getWalletAddress(walletName) as Address;
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
@@ -368,9 +381,9 @@ export const createVaultTool = {
         data: createData.data as `0x${string}`,
       };
 
-      // Check allowance for initial deposit (after building tx data so we can include it in the error)
+      // Check allowance for initial deposit (skip in stateless mode — sponsorship handles approval)
       const initialDeposit = BigInt(validated.initialDepositAmount);
-      if (initialDeposit > 0n) {
+      if (initialDeposit > 0n && !configManager.isStateless()) {
         const ERC20_ALLOWANCE_ABI = parseAbi([
           'function allowance(address owner, address spender) view returns (uint256)',
         ]);
@@ -425,6 +438,34 @@ export const createVaultTool = {
             };
           }
         }
+      }
+
+      // Stateless mode: return calldata without gas estimation or signing
+      if (configManager.isStateless()) {
+        return {
+          success: true,
+          statelessMode: true,
+          calldata: {
+            to: txParams.to,
+            data: txParams.data,
+            value: (txParams.value ?? 0n).toString(),
+            chainId: configManager.getChainId(),
+          },
+          vault: {
+            name: validated.name,
+            symbol: validated.symbol,
+            assetDenominator: validated.assetDenominatorAddress,
+            assetDenominatorAccounting: denominatorAccountingAddress,
+            owner: userAddress,
+            fees: {
+              deposit: validated.depositFee,
+              withdraw: validated.withdrawFee,
+              management: validated.managementFee,
+              performance: validated.performanceFee,
+            },
+          },
+          note: 'Stateless mode - calldata returned for external signing. Use sign_and_send to broadcast.',
+        };
       }
 
       if (configManager.isSimulationMode()) {

@@ -563,3 +563,24 @@ Use `factor_simulate_transaction` (requires Foundry) to test transactions on a f
 
 ### Decoding error data
 Use `factor_decode_error` with the error data from a failed transaction to understand the revert reason.
+
+## Stateless Mode
+
+Stateless mode (`STATELESS_MODE=true`) is designed for multi-tenant MCP Gateway deployments where a single server process handles requests from many users concurrently. It eliminates all global state mutation.
+
+### How it works
+
+- **AsyncLocalStorage pattern**: `ConfigManager` in `src/config/index.ts` uses Node.js `AsyncLocalStorage<RequestContext>` to store per-request context. The `RequestContext` type carries `chainId` (number) and `environment` (production/staging/testing).
+- **Per-request wrapping**: In `src/server.ts`, the `CallToolRequest` handler extracts `chainId` and `environment` from tool arguments, then wraps the tool handler in `configManager.runWithContext(ctx, execute)`. All downstream config reads resolve from this context.
+- **Config getters read context first**: `getChain()`, `getChainId()`, `getRpcUrl()`, `getEnvironment()` all check `AsyncLocalStorage` before falling back to global config. If stateless mode is enabled and no context is found, they throw with a clear error.
+- **Setters throw**: `setChain()`, `setRpcUrl()` throw in stateless mode to prevent accidental global state mutation from concurrent requests.
+
+### What changes in stateless mode
+
+- **No wallet needed**: `sendTransaction()` in `src/wallet/signer.ts` returns unsigned calldata (`{ to, data, value, chainId }`) instead of signing. The gateway or frontend handles signing externally.
+- **Gas estimation skipped**: `estimateGas()` returns zeroed values in stateless mode since the server does not have access to the signer's balance.
+- **Allowance check skipped in `factor_create_vault`**: The initial deposit allowance check is bypassed (`!configManager.isStateless()` guard in `src/tools/vault/create-vault.ts`) because sponsorship or external approval handles this.
+- **`ownerAddress` parameter**: `factor_create_vault` requires `ownerAddress` in stateless mode -- this is the wallet address that will own the vault and receive fees. Without a local wallet, the tool cannot derive the owner address automatically.
+- **Per-request client creation**: `getClient()` in `src/sdk/client.ts` creates a fresh `PublicClient` on every call in stateless mode instead of using the global singleton cache. This prevents concurrent requests with different `chainId` values from seeing stale chain/RPC configurations.
+- **Simulation mode always true**: `isSimulationMode()` always returns `true` in stateless mode since the server cannot broadcast transactions.
+- **`chainId` resolution via `getChainByChainId()`**: `src/config/chains.ts` exports `getChainByChainId(chainId)` which maps numeric chain IDs (42161, 8453, 1) to viem `Chain` objects. This is used throughout stateless mode to resolve chain config from the per-request `chainId`.

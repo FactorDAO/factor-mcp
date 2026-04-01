@@ -11,6 +11,46 @@ An MCP (Model Context Protocol) server that enables AI tools to interact with Fa
 - **Strategy Building**: Compose DeFi strategies using building blocks
 - **Foundry Integration**: Fork simulation, error decoding, forge scripts
 
+## Operating Modes
+
+### stdio (standard MCP)
+
+The default mode. The server runs as a local process, communicates over stdin/stdout, and maintains global state (active chain, wallet, environment) across tool calls. Use `factor_set_chain` to switch chains and `factor_wallet_setup` to configure a wallet.
+
+### Stateless (for MCP Gateway integration)
+
+Designed for multi-tenant gateways where many users share one server process. No global state is mutated -- each tool call carries its own `chainId` and `environment` parameters.
+
+Enable with the environment variable:
+
+```bash
+STATELESS_MODE=true node dist/index.js
+```
+
+Or set `STATELESS_MODE=true` in the process environment.
+
+**Key differences in stateless mode:**
+
+| Behavior | stdio mode | Stateless mode |
+|----------|-----------|---------------|
+| Chain selection | `factor_set_chain` mutates global state | `chainId` param on every tool call |
+| Environment | Set once via config/env var | `environment` param on every tool call |
+| Wallet | Required for write ops | Not needed -- `sendTransaction` returns unsigned calldata |
+| Gas estimation | Runs against RPC | Skipped (returns zeroed estimate) |
+| Allowance check | Checked before vault creation | Skipped (sponsorship handles approval) |
+| Client caching | Singleton `PublicClient` per chain | Fresh client per request (concurrent safety) |
+| Simulation mode | Configurable | Always true |
+
+**How it works internally:**
+
+- `ConfigManager` (in `src/config/index.ts`) uses Node.js `AsyncLocalStorage` to store per-request context (`chainId`, `environment`).
+- In `server.ts`, each `CallToolRequest` extracts `chainId` and `environment` from tool arguments and wraps the handler in `configManager.runWithContext(ctx, execute)`.
+- All config getters (`getChain()`, `getChainId()`, `getRpcUrl()`, `getEnvironment()`) read from `AsyncLocalStorage` first, falling back to global config only in stdio mode.
+- State-mutating setters (`setChain()`, `setRpcUrl()`) throw in stateless mode to prevent global mutation.
+- `sendTransaction()` in `src/wallet/signer.ts` returns a `calldata` object (`{ to, data, value, chainId }`) instead of signing and broadcasting.
+- `factor_create_vault` accepts an `ownerAddress` parameter (required in stateless) to set the vault owner/fee receiver without needing a local wallet.
+- `getClient()` in `src/sdk/client.ts` creates a fresh `PublicClient` per call in stateless mode instead of using the global cache, ensuring concurrent requests with different chains do not collide.
+
 ## Quick Start
 
 ### One-Line Install
@@ -50,8 +90,10 @@ The server uses JSON configuration stored at `~/.factor-mcp/config.json`:
 
 Environment variables can override JSON config:
 - `ALCHEMY_API_KEY` - Alchemy API key for RPC access
-- `DEFAULT_CHAIN` - Default chain (ARBITRUM_ONE, OPTIMISM, BASE, SONIC, MAINNET)
-- `SIMULATION_MODE` - Set to "true" for dry-run mode
+- `DEFAULT_CHAIN` - Default chain (ARBITRUM_ONE, BASE, MAINNET)
+- `STATELESS_MODE` - Set to `true` for stateless/gateway mode (per-request `chainId` and `environment`)
+- `FACTOR_ENVIRONMENT` - `production`, `staging`, or `testing`
+- `SIMULATION_MODE` - Set to `true` for dry-run mode
 - `LOG_LEVEL` - Logging level (debug, info, warn, error)
 - `FACTOR_ARTIFACTS_DIR` - Persist generated forge scripts to this directory (useful in Docker/ephemeral environments)
 
