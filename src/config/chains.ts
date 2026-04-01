@@ -23,6 +23,24 @@ export function isValidChainName(name: string): name is SupportedChainName {
   return name in SUPPORTED_CHAINS;
 }
 
+const CHAIN_ID_MAP: Record<number, SupportedChainName> = {
+  42161: 'ARBITRUM_ONE',
+  8453: 'BASE',
+  1: 'MAINNET',
+};
+
+export function getChainByChainId(chainId: number): Chain {
+  const name = CHAIN_ID_MAP[chainId];
+  if (!name) throw new Error(`Unsupported chainId: ${chainId}. Supported: ${Object.keys(CHAIN_ID_MAP).join(', ')}`);
+  return SUPPORTED_CHAINS[name];
+}
+
+export function getChainNameByChainId(chainId: number): SupportedChainName {
+  const name = CHAIN_ID_MAP[chainId];
+  if (!name) throw new Error(`Unsupported chainId: ${chainId}`);
+  return name;
+}
+
 export function getAlchemyRpcUrl(chainName: SupportedChainName, apiKey: string): string {
   const alchemyNetworks: Record<string, string> = {
     ARBITRUM_ONE: 'arb-mainnet',

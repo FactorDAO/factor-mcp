@@ -64,6 +64,14 @@ let cachedChainId: number | null = null;
 export function getClient(): PublicClient {
   const currentChainId = configManager.getChainId();
 
+  // In stateless mode, don't use the global cache (concurrent requests with different chains)
+  if (configManager.isStateless()) {
+    return createPublicClient({
+      chain: configManager.getChain(),
+      transport: http(configManager.getRpcUrl()),
+    });
+  }
+
   if (cachedPublicClient && cachedChainId === currentChainId) {
     return cachedPublicClient;
   }

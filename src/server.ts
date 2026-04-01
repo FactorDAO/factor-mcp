@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  InitializeRequestSchema,
   ListToolsRequestSchema,
   ErrorCode,
   McpError,
@@ -9,6 +10,7 @@ import {
 import { allTools, type ToolName } from './tools/index.js';
 import { formatError, FactorMcpError } from './utils/errors.js';
 import { logger } from './utils/logger.js';
+import { configManager, type RequestContext } from './config/index.js';
 
 export function createServer(): Server {
   const server = new Server(
@@ -46,7 +48,7 @@ If the wallet has no funds and you need to simulate, call factor_create_vault di
     };
   });
 
-  // Handle tool calls
+  // Handle tool calls — wraps with per-request context in stateless mode
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     const tool = toolMap.get(name);
@@ -55,41 +57,60 @@ If the wallet has no funds and you need to simulate, call factor_create_vault di
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
 
-    try {
-      logger.debug(`Executing tool: ${name}`, args);
-      const result = await tool.handler(args as any || {});
-      logger.debug(`Tool ${name} completed successfully`);
+    // Extract chainId and environment from tool args for per-request context
+    const toolArgs = (args as Record<string, unknown>) || {};
+    const ctx: RequestContext = {};
+    if (toolArgs.chainId != null) ctx.chainId = Number(toolArgs.chainId);
+    if (toolArgs.environment) ctx.environment = toolArgs.environment as RequestContext['environment'];
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      logger.error(`Tool ${name} failed`, error);
+    const execute = async () => {
+      try {
+        logger.debug(`Executing tool: ${name}`, { args: toolArgs, stateless: configManager.isStateless(), ctx });
+        const result = await tool.handler(toolArgs as any);
+        logger.debug(`Tool ${name} completed successfully`);
 
-      const formattedError = formatError(error);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        logger.error(`Tool ${name} failed`, error);
+        const formattedError = formatError(error);
 
-      // Return error as tool result (not throwing) to give better feedback
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(formattedError, null, 2),
-          },
-        ],
-        isError: true,
-      };
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(formattedError, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+    };
+
+    // In stateless mode or when context params are provided, wrap with context
+    if (ctx.chainId || ctx.environment) {
+      return configManager.runWithContext(ctx, execute) as ReturnType<typeof execute>;
     }
+
+    return execute();
   });
 
   return server;
 }
 
 export async function startServer(): Promise<void> {
+  // Enable stateless mode if env var is set (used by MCP Gateway)
+  if (process.env.STATELESS_MODE === 'true') {
+    configManager.enableStatelessMode();
+    logger.info('Factor MCP running in STATELESS mode — chainId and environment required per-request');
+  }
+
   const server = createServer();
   const transport = new StdioServerTransport();
 

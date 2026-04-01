@@ -31,6 +31,13 @@ export interface TransactionResult {
   to: string;
   value: string;
   simulationMode: boolean;
+  /** In stateless mode, contains the unsigned transaction calldata for external signing. */
+  calldata?: {
+    to: string;
+    data: string;
+    value: string;
+    chainId: number;
+  };
 }
 
 export interface GasEstimate {
@@ -97,12 +104,15 @@ export function clearCachedClients(): void {
 
 export async function estimateGas(params: TransactionParams): Promise<GasEstimate> {
   const publicClient = getPublicClient();
-  const walletName = configManager.getWalletName();
 
+  if (configManager.isStateless()) {
+    return { gasLimit: 0n, maxFeePerGas: 0n, maxPriorityFeePerGas: 0n, totalCostWei: 0n, totalCostEth: '0' };
+  }
+
+  const walletName = configManager.getWalletName();
   if (!walletName) {
     throw new WalletError('No wallet configured - use factor_wallet_setup first');
   }
-
   const from = getWalletAddress(walletName) as `0x${string}`;
 
   try {
@@ -166,6 +176,24 @@ export async function sendTransaction(
   params: TransactionParams,
   password?: string
 ): Promise<TransactionResult> {
+  // Stateless mode: return calldata without signing (no wallet needed)
+  if (configManager.isStateless()) {
+    logger.info('Stateless mode - returning calldata (no signing)');
+    return {
+      hash: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hash,
+      from: '0x0000000000000000000000000000000000000000',
+      to: params.to,
+      value: (params.value ?? 0n).toString(),
+      simulationMode: true,
+      calldata: {
+        to: params.to,
+        data: params.data ?? '0x',
+        value: (params.value ?? 0n).toString(),
+        chainId: configManager.getChainId(),
+      },
+    };
+  }
+
   const walletName = configManager.getWalletName();
 
   if (!walletName) {

@@ -1,4 +1,5 @@
-import { SupportedChainName, getChain, getAlchemyRpcUrl, DEFAULT_CHAIN } from './chains.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { SupportedChainName, getChain, getAlchemyRpcUrl, getChainByChainId, DEFAULT_CHAIN } from './chains.js';
 import { loadEnvironment, EnvironmentConfig, updateJsonConfig, loadJsonConfig, getConfigPath } from './environment.js';
 import type { Chain } from 'viem';
 
@@ -10,9 +11,18 @@ export interface ServerConfig {
   walletName: string | null;
 }
 
+/** Per-request context for stateless mode. */
+export interface RequestContext {
+  chainId?: number;
+  environment?: 'production' | 'staging' | 'testing';
+}
+
+const requestContext = new AsyncLocalStorage<RequestContext>();
+
 class ConfigManager {
   private config: ServerConfig;
   private env: EnvironmentConfig;
+  private _stateless: boolean = false;
 
   constructor() {
     this.env = loadEnvironment();
@@ -23,6 +33,27 @@ class ConfigManager {
       logLevel: this.env.logLevel,
       walletName: this.env.activeWallet || null,
     };
+    // Auto-enable stateless mode from env var
+    if (process.env.STATELESS_MODE === 'true') {
+      this._stateless = true;
+    }
+  }
+
+  /** Enable stateless mode. All getters require per-request context (chainId, environment). */
+  enableStatelessMode(): void {
+    this._stateless = true;
+  }
+
+  isStateless(): boolean {
+    return this._stateless;
+  }
+
+  /**
+   * Run a function with per-request context.
+   * In stateless mode, getChainId() and getEnvironment() read from this context.
+   */
+  runWithContext<T>(ctx: RequestContext, fn: () => T | Promise<T>): T | Promise<T> {
+    return requestContext.run(ctx, fn);
   }
 
   private resolveRpcUrl(chain: SupportedChainName): string {
@@ -39,30 +70,66 @@ class ConfigManager {
   }
 
   getConfig(): Readonly<ServerConfig> {
+    const ctx = requestContext.getStore();
+    if (ctx?.chainId) {
+      const chain = getChainByChainId(ctx.chainId);
+      const chainName = (chain.id === 42161 ? 'ARBITRUM_ONE' : chain.id === 8453 ? 'BASE' : 'MAINNET') as SupportedChainName;
+      return {
+        ...this.config,
+        chain: chainName,
+        rpcUrl: this.resolveRpcUrl(chainName),
+      };
+    }
     return { ...this.config };
   }
 
-  getFullConfig(): { runtime: ServerConfig; file: ReturnType<typeof loadJsonConfig>; path: string } {
+  getFullConfig(): { runtime: ServerConfig; file: ReturnType<typeof loadJsonConfig>; path: string; stateless: boolean } {
     return {
       runtime: this.getConfig(),
       file: loadJsonConfig(),
       path: getConfigPath(),
+      stateless: this._stateless,
     };
   }
 
   getChain(): Chain {
+    // In stateless mode, read from request context
+    const ctx = requestContext.getStore();
+    if (ctx?.chainId) {
+      return getChainByChainId(ctx.chainId);
+    }
+    if (this._stateless) {
+      throw new Error('Stateless mode: chainId is required in every tool call. Pass chainId as a parameter.');
+    }
     return getChain(this.config.chain);
   }
 
   getChainId(): number {
-    return this.getChain().id;
+    const ctx = requestContext.getStore();
+    if (ctx?.chainId) return ctx.chainId;
+    if (this._stateless) {
+      throw new Error('Stateless mode: chainId is required in every tool call. Pass chainId as a parameter.');
+    }
+    return getChain(this.config.chain).id;
   }
 
   getRpcUrl(): string {
+    // In stateless mode, resolve RPC from request context chain
+    const ctx = requestContext.getStore();
+    if (ctx?.chainId) {
+      const chain = getChainByChainId(ctx.chainId);
+      const chainName = chain.name === 'Arbitrum One' ? 'ARBITRUM_ONE' : chain.name === 'Base' ? 'BASE' : 'MAINNET';
+      return this.resolveRpcUrl(chainName as SupportedChainName);
+    }
+    if (this._stateless) {
+      throw new Error('Stateless mode: chainId is required to resolve RPC URL.');
+    }
     return this.config.rpcUrl;
   }
 
   isSimulationMode(): boolean {
+    // In stateless mode, always return true (calldata only, no signing)
+    if (this._stateless) return true;
     return this.config.simulationMode;
   }
 
@@ -71,8 +138,10 @@ class ConfigManager {
   }
 
   setChain(chain: SupportedChainName, persist: boolean = true): void {
+    if (this._stateless) {
+      throw new Error('Stateless mode: cannot mutate global chain. Pass chainId per-request.');
+    }
     this.config.chain = chain;
-    // Update RPC URL unless custom URL is set
     if (!this.env.customRpcUrl) {
       this.config.rpcUrl = this.resolveRpcUrl(chain);
     }
@@ -82,6 +151,9 @@ class ConfigManager {
   }
 
   setRpcUrl(url: string, persist: boolean = true): void {
+    if (this._stateless) {
+      throw new Error('Stateless mode: cannot mutate global RPC URL.');
+    }
     this.config.rpcUrl = url;
     if (persist) {
       updateJsonConfig({ customRpcUrl: url });
@@ -89,6 +161,7 @@ class ConfigManager {
   }
 
   setSimulationMode(enabled: boolean, persist: boolean = true): void {
+    if (this._stateless) return; // no-op in stateless
     this.config.simulationMode = enabled;
     if (persist) {
       updateJsonConfig({ simulationMode: enabled });
@@ -96,6 +169,7 @@ class ConfigManager {
   }
 
   setWalletName(name: string | null, persist: boolean = true): void {
+    if (this._stateless) return; // no wallet in stateless
     this.config.walletName = name;
     if (persist) {
       updateJsonConfig({ activeWallet: name || undefined });
@@ -103,10 +177,13 @@ class ConfigManager {
   }
 
   getWalletName(): string | null {
+    if (this._stateless) return null;
     return this.config.walletName;
   }
 
   getEnvironment(): 'production' | 'staging' | 'testing' {
+    const ctx = requestContext.getStore();
+    if (ctx?.environment) return ctx.environment;
     return this.env.environment;
   }
 
@@ -140,7 +217,6 @@ class ConfigManager {
   setAlchemyApiKey(apiKey: string): void {
     this.env.alchemyApiKey = apiKey;
     updateJsonConfig({ alchemyApiKey: apiKey });
-    // Update RPC URL with new API key
     this.config.rpcUrl = this.resolveRpcUrl(this.config.chain);
   }
 }
