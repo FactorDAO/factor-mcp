@@ -32,8 +32,8 @@ function getChainIdEnum(chain: string): ChainId {
 }
 
 export const swapTool = {
-  name: 'factor_swap',
-  description: 'Swap tokens through Uniswap V3 via a Factor vault (exact input — you specify how much to spend). Supports "all" to swap entire balance, percentage amounts like "50%", or exact amounts in base units (wei). For exact output swaps (specify how much to receive), use factor_swap_exact_output instead. Fee tiers: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%).',
+  name: 'factor_swap_uniswap',
+  description: 'Swap tokens through Uniswap V3 via a Factor vault (exact input). NOT available on Base — use factor_swap_openocean on Base. Supports "all", percentage amounts like "50%", or exact amounts in base units (wei). Fee tiers: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%).',
   inputSchema: {
     type: 'object',
     properties: {

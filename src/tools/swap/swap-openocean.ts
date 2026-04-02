@@ -1,21 +1,28 @@
 import { z } from 'zod';
-import { isAddress, type Address } from 'viem';
+import { isAddress, type Address, formatUnits } from 'viem';
 import { configManager } from '../../config/index.js';
-import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
+import { sendTransaction, estimateGas, getPublicClient, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
-import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
+import { StudioProVault, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
+import { getTokenDecimals } from '../../utils/format.js';
 
 export const swapOpenOceanSchema = z.object({
   vaultAddress: z.string(),
   tokenIn: z.string(),
   tokenOut: z.string(),
   amount: z.string(),
-  openOceanSwapData: z.string(),
+  slippage: z.number().optional(),
   password: z.string().optional(),
 });
 
 export type SwapOpenOceanInput = z.infer<typeof swapOpenOceanSchema>;
+
+const CHAIN_TO_OO: Record<string, string> = {
+  ARBITRUM_ONE: 'arbitrum',
+  BASE: 'base',
+  MAINNET: 'eth',
+};
 
 function getChainIdEnum(chain: string): ChainId {
   switch (chain) {
@@ -30,9 +37,35 @@ function getChainIdEnum(chain: string): ChainId {
   }
 }
 
+async function fetchOpenOceanSwapQuote(params: {
+  chain: string;
+  inTokenAddress: string;
+  outTokenAddress: string;
+  amount: string;
+  slippage: string;
+  account: string;
+}): Promise<{ data: string; outAmount: string; inAmount: string }> {
+  const ooChain = CHAIN_TO_OO[params.chain] || 'base';
+  const url = new URL(`https://open-api.openocean.finance/v3/${ooChain}/swap_quote`);
+  url.searchParams.set('inTokenAddress', params.inTokenAddress);
+  url.searchParams.set('outTokenAddress', params.outTokenAddress);
+  url.searchParams.set('amount', params.amount);
+  url.searchParams.set('slippage', params.slippage);
+  url.searchParams.set('account', params.account);
+  url.searchParams.set('gasPrice', '1');
+  url.searchParams.set('disabledDexIds', '2,14,8');
+  url.searchParams.set('referrer', '0x95C34a4efFc5eEF480c65E2865C63EE28F2f9C7e');
+
+  const response = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`OpenOcean API error: ${response.status}`);
+  const json = await response.json() as { code: number; data: { data: string; outAmount: string; inAmount: string }; error?: string };
+  if (json.code !== 200) throw new Error(`OpenOcean API: ${json.error || 'unknown error'}`);
+  return json.data;
+}
+
 export const swapOpenOceanTool = {
   name: 'factor_swap_openocean',
-  description: 'Swap tokens through OpenOcean DEX aggregator via a Factor vault. Requires openOceanSwapData from the OpenOcean API (get a quote first). Use amount "all" to swap entire vault balance.',
+  description: 'Swap tokens through OpenOcean DEX aggregator via a Factor vault. Works on all chains including Base. Automatically fetches the best swap route from OpenOcean. Supports "all" to swap entire vault balance, percentage amounts like "50%", or exact amounts in base units (wei).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -50,18 +83,18 @@ export const swapOpenOceanTool = {
       },
       amount: {
         type: 'string',
-        description: 'Amount in base units (wei), or "all" to swap entire vault balance',
+        description: 'Amount in base units (wei), or "all" to swap entire vault balance, or "50%" for percentage',
       },
-      openOceanSwapData: {
-        type: 'string',
-        description: 'Swap data from OpenOcean API (hex encoded calldata)',
+      slippage: {
+        type: 'number',
+        description: 'Slippage tolerance as a percentage (e.g., 1 for 1%). Default: 1',
       },
       password: {
         type: 'string',
         description: 'Wallet password if encrypted',
       },
     },
-    required: ['vaultAddress', 'tokenIn', 'tokenOut', 'amount', 'openOceanSwapData'],
+    required: ['vaultAddress', 'tokenIn', 'tokenOut', 'amount'],
   },
   handler: async (input: SwapOpenOceanInput) => {
     const validated = swapOpenOceanSchema.parse(input);
@@ -85,7 +118,15 @@ export const swapOpenOceanTool = {
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
+    const slippage = validated.slippage || 1;
     const isAll = validated.amount.toLowerCase() === 'all';
+    const percentageMatch = validated.amount.match(/^(\d+(?:\.\d+)?)%$/);
+    const isPercentage = !!percentageMatch;
+    const percentage = isPercentage ? parseFloat(percentageMatch![1]) : 0;
+
+    if (isPercentage && (percentage <= 0 || percentage > 100)) {
+      throw new VaultError('Percentage must be between 0 and 100');
+    }
 
     try {
       const proVault = new StudioProVault({
@@ -101,18 +142,70 @@ export const swapOpenOceanTool = {
         environment,
       });
 
-      let block: SendTransactionParams;
+      const publicClient = getPublicClient();
+      const tokenInDecimals = await getTokenDecimals(publicClient, validated.tokenIn as Address);
 
-      const swapParams = {
-        tokenIn: validated.tokenIn,
-        tokenOut: validated.tokenOut,
-        openOceanSwapData: validated.openOceanSwapData,
-      };
-
-      if (isAll) {
-        block = (strategyBuilder.adapter as any).openOcean.swapAll(swapParams);
+      // Resolve the actual amount in wei
+      let amountWei: bigint;
+      if (isAll || isPercentage) {
+        const balanceResult = await publicClient.readContract({
+          address: validated.tokenIn as Address,
+          abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] }],
+          functionName: 'balanceOf',
+          args: [vaultAddress],
+        });
+        const balance = balanceResult as bigint;
+        amountWei = isAll ? balance : (balance * BigInt(Math.round(percentage * 100))) / 10000n;
       } else {
-        block = (strategyBuilder.adapter as any).openOcean.swapBN({ ...swapParams, amountBN: validated.amount });
+        amountWei = BigInt(validated.amount);
+      }
+
+      if (amountWei === 0n) {
+        throw new VaultError('Vault has zero balance of the input token');
+      }
+
+      // Format amount for OpenOcean API (human-readable)
+      const amountHuman = formatUnits(amountWei, tokenInDecimals);
+
+      // Get the OpenOcean adapter address to use as the `account` param
+      const contracts = getContractAddressesForChainOrThrow(chainId, environment);
+      const ooAdapterAddress = (contracts as unknown as Record<string, string>).factor_openocean_adapter_pro;
+      if (!ooAdapterAddress) {
+        throw new VaultError('OpenOcean adapter not found for this chain');
+      }
+
+      // Fetch swap quote from OpenOcean
+      const quote = await fetchOpenOceanSwapQuote({
+        chain,
+        inTokenAddress: validated.tokenIn,
+        outTokenAddress: validated.tokenOut,
+        amount: amountHuman,
+        slippage: slippage.toString(),
+        account: ooAdapterAddress,
+      });
+
+      // Build the swap block using the SDK
+      let block: SendTransactionParams;
+      if (isAll) {
+        block = (strategyBuilder.adapter as any).openOcean.swapAll({
+          tokenIn: validated.tokenIn,
+          tokenOut: validated.tokenOut,
+          openOceanSwapData: quote.data,
+        });
+      } else if (isPercentage) {
+        block = (strategyBuilder.adapter as any).openOcean.swapByPercentage({
+          tokenInAddress: validated.tokenIn,
+          tokenOutAddress: validated.tokenOut,
+          percentage: percentage * 1e16,
+          openOceanSwapData: quote.data,
+        });
+      } else {
+        block = (strategyBuilder.adapter as any).openOcean.swapBN({
+          tokenInAddress: validated.tokenIn,
+          tokenOutAddress: validated.tokenOut,
+          amountInBN: amountWei.toString(),
+          openOceanSwapData: quote.data,
+        });
       }
 
       const executeData = proVault.executeByManager([block]);
@@ -134,6 +227,8 @@ export const swapOpenOceanTool = {
           tokenIn: validated.tokenIn,
           tokenOut: validated.tokenOut,
           amount: validated.amount,
+          amountWei: amountWei.toString(),
+          estimatedOutput: quote.outAmount,
           transaction: {
             to: executeData.to,
             data: executeData.data,
@@ -157,6 +252,8 @@ export const swapOpenOceanTool = {
         tokenIn: validated.tokenIn,
         tokenOut: validated.tokenOut,
         amount: validated.amount,
+        amountWei: amountWei.toString(),
+        estimatedOutput: quote.outAmount,
         transactionHash: result.hash,
         chain,
         note: 'Swap transaction submitted. Use factor_get_transaction_status to monitor progress.',

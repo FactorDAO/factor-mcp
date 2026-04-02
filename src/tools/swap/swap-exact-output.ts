@@ -32,7 +32,7 @@ function getChainIdEnum(chain: string): ChainId {
 }
 
 export const swapExactOutputTool = {
-  name: 'factor_swap_exact_output',
+  name: 'factor_swap_uniswap_exact_output',
   description: 'Swap tokens through Uniswap V3 via a Factor vault, specifying the exact output amount desired. Use amountInMax to set the maximum input you are willing to spend, or use "all" to allow spending the entire vault balance of tokenIn. Fee tiers: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%).',
   inputSchema: {
     type: 'object',
