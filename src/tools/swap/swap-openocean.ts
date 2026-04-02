@@ -6,6 +6,7 @@ import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 import { getTokenDecimals } from '../../utils/format.js';
+import { checkAdapterRegistered, AdapterNotRegisteredError } from '../../utils/adapter-check.js';
 
 export const swapOpenOceanSchema = z.object({
   vaultAddress: z.string(),
@@ -167,12 +168,14 @@ export const swapOpenOceanTool = {
       // Format amount for OpenOcean API (human-readable)
       const amountHuman = formatUnits(amountWei, tokenInDecimals);
 
-      // Get the OpenOcean adapter address to use as the `account` param
+      // Get the OpenOcean adapter address and verify it's registered in the vault
       const contracts = getContractAddressesForChainOrThrow(chainId, environment);
       const ooAdapterAddress = (contracts as unknown as Record<string, string>).factor_openocean_adapter_pro;
       if (!ooAdapterAddress) {
         throw new VaultError('OpenOcean adapter not found for this chain');
       }
+
+      await checkAdapterRegistered(vaultAddress, ooAdapterAddress as Address, 'OpenOcean');
 
       // Fetch swap quote from OpenOcean
       const quote = await fetchOpenOceanSwapQuote({
@@ -259,6 +262,16 @@ export const swapOpenOceanTool = {
         note: 'Swap transaction submitted. Use factor_get_transaction_status to monitor progress.',
       };
     } catch (error) {
+      if (error instanceof AdapterNotRegisteredError) {
+        return {
+          success: false,
+          error: 'ADAPTER_NOT_REGISTERED',
+          message: error.message,
+          adapterAddress: error.adapterAddress,
+          adapterName: error.adapterName,
+          fix: `Call factor_add_adapter with vaultAddress "${vaultAddress}" and adapterAddress "${error.adapterAddress}", then sign_and_send. After that, retry this swap.`,
+        };
+      }
       if (error instanceof VaultError || error instanceof WalletError) {
         throw error;
       }

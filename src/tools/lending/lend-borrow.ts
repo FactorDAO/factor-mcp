@@ -6,6 +6,7 @@ import { sendTransaction, estimateGas, type TransactionParams } from '../../wall
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
+import { checkAdapterRegistered, AdapterNotRegisteredError } from '../../utils/adapter-check.js';
 
 const protocolEnum = z.enum(['aave', 'compoundV3', 'morpho', 'siloV2']);
 
@@ -118,6 +119,9 @@ export const lendBorrowTool = {
         environment,
       });
 
+      const adapter = (strategyBuilder.adapter as any)[validated.protocol];
+      await checkAdapterRegistered(vaultAddress, adapter.adapterAddress as Address, validated.protocol);
+
       let block: SendTransactionParams;
 
       switch (validated.protocol) {
@@ -178,6 +182,16 @@ export const lendBorrowTool = {
         note: 'Borrow transaction submitted. Use factor_get_transaction_status to monitor progress.',
       };
     } catch (error) {
+      if (error instanceof AdapterNotRegisteredError) {
+        return {
+          success: false,
+          error: 'ADAPTER_NOT_REGISTERED',
+          message: error.message,
+          adapterAddress: error.adapterAddress,
+          adapterName: error.adapterName,
+          fix: `Call factor_add_adapter with vaultAddress "${vaultAddress}" and adapterAddress "${error.adapterAddress}", then sign_and_send. After that, retry this borrow.`,
+        };
+      }
       if (error instanceof VaultError || error instanceof WalletError) {
         throw error;
       }

@@ -5,6 +5,7 @@ import { sendTransaction, estimateGas, type TransactionParams } from '../../wall
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
+import { checkAdapterRegistered, AdapterNotRegisteredError } from '../../utils/adapter-check.js';
 
 const directionEnum = z.enum(['tokenToPT', 'tokenToYT', 'ptToToken', 'ytToToken']);
 
@@ -122,6 +123,9 @@ export const swapPendleTool = {
         environment,
       });
 
+      const adapterAddress = (strategyBuilder.adapter as any).pendlePy.adapterAddress;
+      await checkAdapterRegistered(vaultAddress, adapterAddress as Address, 'Pendle');
+
       let block: SendTransactionParams;
 
       const baseParams: Record<string, unknown> = {
@@ -206,6 +210,16 @@ export const swapPendleTool = {
         note: 'Pendle swap transaction submitted. Use factor_get_transaction_status to monitor progress.',
       };
     } catch (error) {
+      if (error instanceof AdapterNotRegisteredError) {
+        return {
+          success: false,
+          error: 'ADAPTER_NOT_REGISTERED',
+          message: error.message,
+          adapterAddress: error.adapterAddress,
+          adapterName: error.adapterName,
+          fix: `Call factor_add_adapter with vaultAddress "${vaultAddress}" and adapterAddress "${error.adapterAddress}", then sign_and_send. After that, retry this swap.`,
+        };
+      }
       if (error instanceof VaultError || error instanceof WalletError) {
         throw error;
       }
