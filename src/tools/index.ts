@@ -36,6 +36,7 @@ import { addVaultManagerTool } from './vault/manage-managers.js';
 import { removeVaultManagerTool } from './vault/manage-managers.js';
 import { setRiskManagerTool } from './vault/manage-managers.js';
 import { transferOwnershipTool } from './vault/transfer-ownership.js';
+import { vaultAnalyticsTool } from './vault/vault-analytics.js';
 
 // Tokenlist tools
 import { getLendingTokensTool } from './tokenlist/get-lending-tokens.js';
@@ -125,6 +126,7 @@ export {
   removeVaultManagerTool,
   setRiskManagerTool,
   transferOwnershipTool,
+  vaultAnalyticsTool,
   getLendingTokensTool,
   addVaultTokenTool,
   approveTool,
@@ -199,6 +201,7 @@ export const allTools = [
   removeVaultManagerTool,
   setRiskManagerTool,
   transferOwnershipTool,
+  vaultAnalyticsTool,
 
   // Tokenlist (2)
   getLendingTokensTool,
@@ -266,6 +269,7 @@ export type ToolName =
   | 'factor_get_address_book'
   | 'factor_get_owned_vaults'
   | 'factor_get_vault_info'
+  | 'factor_vault_analytics'
   | 'factor_get_shares'
   | 'factor_get_executions'
   | 'factor_preview_deposit'

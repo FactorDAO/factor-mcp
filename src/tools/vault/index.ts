@@ -30,3 +30,6 @@ export { setRiskManagerTool } from './manage-managers.js';
 
 // Vault Management - Ownership
 export { transferOwnershipTool } from './transfer-ownership.js';
+
+// Analytics
+export { vaultAnalyticsTool } from './vault-analytics.js';
