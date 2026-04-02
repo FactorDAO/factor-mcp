@@ -177,14 +177,14 @@ export const swapOpenOceanTool = {
 
       await checkAdapterRegistered(vaultAddress, ooAdapterAddress as Address, 'OpenOcean');
 
-      // Fetch swap quote from OpenOcean
+      // Fetch swap quote from OpenOcean — account must be the vault (delegatecall context)
       const quote = await fetchOpenOceanSwapQuote({
         chain,
         inTokenAddress: validated.tokenIn,
         outTokenAddress: validated.tokenOut,
         amount: amountHuman,
         slippage: slippage.toString(),
-        account: ooAdapterAddress,
+        account: vaultAddress,
       });
 
       // Build the swap block using the SDK
