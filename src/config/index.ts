@@ -177,7 +177,7 @@ class ConfigManager {
   }
 
   getWalletName(): string | null {
-    if (this._stateless) return null;
+    if (this._stateless) return '__stateless__';
     return this.config.walletName;
   }
 

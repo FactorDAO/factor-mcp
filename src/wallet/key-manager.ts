@@ -232,6 +232,10 @@ export function getWallet(name: string): WalletData {
  * 3. Decrypt using the appropriate method
  */
 export function getPrivateKey(name: string, password?: string): string {
+  if (name === '__stateless__') {
+    throw new WalletError('Cannot access private key in stateless mode');
+  }
+
   const storage = getWalletStorageType(name);
 
   if (!storage) {
@@ -285,6 +289,11 @@ export function deleteWallet(name: string): void {
  * Get the address for a wallet, detecting storage type automatically.
  */
 export function getWalletAddress(name: string): string {
+  // Stateless mode: return placeholder address
+  if (name === '__stateless__') {
+    return '0x0000000000000000000000000000000000000001';
+  }
+
   const storage = getWalletStorageType(name);
 
   if (!storage) {
