@@ -119,7 +119,7 @@ export function loadEnvironment(): EnvironmentConfig {
   const validEnvironments = ['production', 'staging', 'testing'] as const;
   const environment = validEnvironments.includes(environmentEnv as any)
     ? (environmentEnv as FactorEnvironment)
-    : (jsonConfig.environment || 'testing');
+    : (jsonConfig.environment || 'production');
 
   return {
     alchemyApiKey,
