@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@factordao/sdk':
-        specifier: pro-beta
-        version: 2.1.13(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)
+        specifier: 2.1.16
+        version: 2.1.16(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)
       '@factordao/sdk-studio':
-        specifier: pro-beta
-        version: 2.1.13(@ethersproject/address@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/networks@5.8.0)(@ethersproject/providers@5.8.0)(@ethersproject/solidity@5.8.0)(hardhat@2.28.4(ts-node@10.9.2(@types/node@20.19.33)(typescript@5.9.3))(typescript@5.9.3))(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)
+        specifier: 2.1.16
+        version: 2.1.16(@ethersproject/address@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/networks@5.8.0)(@ethersproject/providers@5.8.0)(@ethersproject/solidity@5.8.0)(hardhat@2.28.4(ts-node@10.9.2(@types/node@20.19.33)(typescript@5.9.3))(typescript@5.9.3))(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.26.0(zod@3.25.76)
@@ -24,6 +24,9 @@ importers:
         specifier: ^3.22.4
         version: 3.25.76
     devDependencies:
+      '@noble/curves':
+        specifier: ^1.9.1
+        version: 1.9.1
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.33
@@ -329,14 +332,14 @@ packages:
   '@ethersproject/wordlists@5.8.0':
     resolution: {integrity: sha512-2df9bbXicZws2Sb5S6ET493uJ0Z84Fjr3pC4tu/qlnZERibZCeUVuqdtt+7Tv9xxhUxHoIekIA7avrKUWHrezg==}
 
-  '@factordao/contracts@2.1.13':
-    resolution: {integrity: sha512-nlDEeHX6k7+aMuIeirlbuEx60KUiHMO0ZyyFZFxMNRvPWLhoExD6HM/VopjdcopQGcvSINnyvzgUaFdFBjbb5Q==}
+  '@factordao/contracts@2.1.17':
+    resolution: {integrity: sha512-+iTDuHaMK/66LKC7RYfHvt2gAp9tqNFsFfWn+sdyfT3B5wnjKjtkSS1Kqi4kdBNdGTvFa8yJ2LEura3F0MLJQw==}
 
-  '@factordao/sdk-studio@2.1.13':
-    resolution: {integrity: sha512-/6apqyqNMQLnpfj7ouz1RXzRwSNrBKWj92wAI8VGGIEYE5l9s3JIJv8OlEr3owakXZKFu7jdga2Hw9wGE2ah4Q==}
+  '@factordao/sdk-studio@2.1.16':
+    resolution: {integrity: sha512-SIR5rw7c+2xiM4GG8w9VpUC0OJS/Jc8vLIfSk4/oA2h178Hin7BwkuImTtl2yWW2GgvoRPMbtZTmfyt1NllR7g==}
 
-  '@factordao/sdk@2.1.13':
-    resolution: {integrity: sha512-s6Sqy/6YZRL4CQql3A0T3uIqb7s9D6l9nGMb5MD9cMhI+mjYRKaf16z7tPKdv1+onKU6gTBvKg/OF6JFk2exmA==}
+  '@factordao/sdk@2.1.16':
+    resolution: {integrity: sha512-tD/IhC/i+bHcF1MWxaaTEnlU3U7JtLvMDMlhO0eq1d/xQfSIVVNEoXBhEDjWqOPWt4F05awXS7OGuO7w8UMg3Q==}
 
   '@factordao/tokenlist@1.3.44':
     resolution: {integrity: sha512-Kg7EJhu0QtoIWLvkxUZma25GABiIID829I6Mn0gbQj330M0bUs3o21n/v83MblGbkdI89JfA+ABQS6txxzYE0Q==}
@@ -2676,7 +2679,7 @@ snapshots:
       '@ethersproject/properties': 5.8.0
       '@ethersproject/strings': 5.8.0
 
-  '@factordao/contracts@2.1.13':
+  '@factordao/contracts@2.1.17':
     dependencies:
       '@cryptoalgebra/core': 3.0.0
       '@openzeppelin/contracts': 5.6.1
@@ -2692,11 +2695,11 @@ snapshots:
       - debug
       - supports-color
 
-  '@factordao/sdk-studio@2.1.13(@ethersproject/address@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/networks@5.8.0)(@ethersproject/providers@5.8.0)(@ethersproject/solidity@5.8.0)(hardhat@2.28.4(ts-node@10.9.2(@types/node@20.19.33)(typescript@5.9.3))(typescript@5.9.3))(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)':
+  '@factordao/sdk-studio@2.1.16(@ethersproject/address@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/networks@5.8.0)(@ethersproject/providers@5.8.0)(@ethersproject/solidity@5.8.0)(hardhat@2.28.4(ts-node@10.9.2(@types/node@20.19.33)(typescript@5.9.3))(typescript@5.9.3))(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@aave/math-utils': 1.20.0(bignumber.js@9.3.1)(tslib@2.8.1)
-      '@factordao/contracts': 2.1.13
-      '@factordao/sdk': 2.1.13(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)
+      '@factordao/contracts': 2.1.17
+      '@factordao/sdk': 2.1.16(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)
       '@factordao/tokenlist': 1.3.44(typescript@5.9.3)(zod@3.25.76)
       '@uniswap/sdk': 3.0.3(@ethersproject/address@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/networks@5.8.0)(@ethersproject/providers@5.8.0)(@ethersproject/solidity@5.8.0)
       '@uniswap/v3-sdk': 3.27.0(hardhat@2.28.4(ts-node@10.9.2(@types/node@20.19.33)(typescript@5.9.3))(typescript@5.9.3))
@@ -2726,10 +2729,10 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@factordao/sdk@2.1.13(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)':
+  '@factordao/sdk@2.1.16(tslib@2.8.1)(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@aave/math-utils': 1.20.0(bignumber.js@9.3.1)(tslib@2.8.1)
-      '@factordao/contracts': 2.1.13
+      '@factordao/contracts': 2.1.17
       axios: 1.13.5
       bignumber.js: 9.3.1
       chalk: 4.1.2
