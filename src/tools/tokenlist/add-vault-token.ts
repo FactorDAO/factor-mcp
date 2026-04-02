@@ -3,7 +3,7 @@ import { isAddress, type Address } from 'viem';
 import { configManager } from '../../config/index.js';
 import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
-import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
+import { StudioProVault, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 
 const tokenTypeEnum = z.enum(['asset', 'debt']);
@@ -11,7 +11,7 @@ const tokenTypeEnum = z.enum(['asset', 'debt']);
 export const addVaultTokenSchema = z.object({
   vaultAddress: z.string(),
   tokenAddress: z.string(),
-  accountingAddress: z.string(),
+  accountingAddress: z.string().optional(),
   type: tokenTypeEnum,
   password: z.string().optional(),
 });
@@ -50,7 +50,7 @@ export const addVaultTokenTool = {
       accountingAddress: {
         type: 'string',
         description:
-          'The accounting adapter address for this token. Must be whitelisted in the factory. Use factor_get_factory_addresses to find the correct accounting address for the token.',
+          'Optional. The accounting adapter address. If omitted, auto-detects using the Chainlink accounting adapter for this chain.',
       },
       type: {
         type: 'string',
@@ -62,7 +62,7 @@ export const addVaultTokenTool = {
         description: 'Wallet password if encrypted',
       },
     },
-    required: ['vaultAddress', 'tokenAddress', 'accountingAddress', 'type'],
+    required: ['vaultAddress', 'tokenAddress', 'type'],
   },
   handler: async (input: AddVaultTokenInput) => {
     const validated = addVaultTokenSchema.parse(input);
@@ -73,10 +73,6 @@ export const addVaultTokenTool = {
     if (!isAddress(validated.tokenAddress)) {
       throw new VaultError('Invalid token address');
     }
-    if (!isAddress(validated.accountingAddress)) {
-      throw new VaultError('Invalid accounting address');
-    }
-
     const walletName = configManager.getWalletName();
     if (!walletName) {
       throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
@@ -84,10 +80,27 @@ export const addVaultTokenTool = {
 
     const vaultAddress = validated.vaultAddress as Address;
     const tokenAddress = validated.tokenAddress as Address;
-    const accountingAddress = validated.accountingAddress as Address;
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
+
+    // Auto-detect accounting address if not provided — use Chainlink accounting from SDK
+    let accountingAddress: Address;
+    if (validated.accountingAddress && isAddress(validated.accountingAddress)) {
+      accountingAddress = validated.accountingAddress as Address;
+    } else {
+      try {
+        const contracts = getContractAddressesForChainOrThrow(chainId, environment);
+        const chainlinkAccounting = (contracts as unknown as Record<string, string>).factor_chainlink_accounting_adapter_pro;
+        if (!chainlinkAccounting) {
+          throw new VaultError('Could not find Chainlink accounting adapter for this chain. Provide accountingAddress manually.');
+        }
+        accountingAddress = chainlinkAccounting as Address;
+      } catch (err) {
+        if (err instanceof VaultError) throw err;
+        throw new VaultError('Failed to auto-detect accounting address. Provide accountingAddress manually.');
+      }
+    }
 
     try {
       const proVault = new StudioProVault({

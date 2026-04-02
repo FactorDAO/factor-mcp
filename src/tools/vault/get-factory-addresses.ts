@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { configManager } from '../../config/index.js';
 import { SdkError } from '../../utils/errors.js';
-import { StudioProVaultStats, StrategyBuilder } from '@factordao/sdk-studio';
+import { StudioProVaultStats, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 
 export const getFactoryAddressesSchema = z.object({
@@ -76,17 +76,38 @@ export const getFactoryAddressesTool = {
         }
       });
 
-      // Process assets with accounting
-      let assets = activeAddresses.assets.map((asset: { asset: string; accounting: string }) => ({
-        asset: asset.asset,
-        accounting: asset.accounting,
-      }));
+      // Build set of current accounting addresses from the address book
+      const currentAccounting = new Set<string>();
+      try {
+        const contracts = getContractAddressesForChainOrThrow(chainId, environment);
+        for (const [key, value] of Object.entries(contracts as unknown as Record<string, unknown>)) {
+          if (key.includes('accounting') && typeof value === 'string' && value !== '') {
+            currentAccounting.add(value.toLowerCase());
+          }
+        }
+      } catch {
+        // Address book unavailable — return all (no filtering)
+      }
 
-      // Process debts with accounting
-      let debts = activeAddresses.debts.map((debt: { asset: string; accounting: string }) => ({
-        asset: debt.asset,
-        accounting: debt.accounting,
-      }));
+      // Process assets — filter out stale accounting adapters
+      let assets = activeAddresses.assets
+        .filter((asset: { asset: string; accounting: string }) =>
+          currentAccounting.size === 0 || currentAccounting.has(asset.accounting.toLowerCase())
+        )
+        .map((asset: { asset: string; accounting: string }) => ({
+          asset: asset.asset,
+          accounting: asset.accounting,
+        }));
+
+      // Process debts — filter out stale accounting adapters
+      let debts = activeAddresses.debts
+        .filter((debt: { asset: string; accounting: string }) =>
+          currentAccounting.size === 0 || currentAccounting.has(debt.accounting.toLowerCase())
+        )
+        .map((debt: { asset: string; accounting: string }) => ({
+          asset: debt.asset,
+          accounting: debt.accounting,
+        }));
 
       // Filter by search address if provided
       if (searchAddr) {
@@ -116,8 +137,8 @@ export const getFactoryAddressesTool = {
         assets,
         debts,
         note: searchAddr
-          ? `Filtered results for address ${validated.search}. Use the accounting address that matches your asset.`
-          : 'Use the accounting address that matches your asset when creating a vault. TIP: Pass a "search" address to filter results.',
+          ? `Filtered results for address ${validated.search}. If the asset does not appear in the results, it has no valid accounting adapter and cannot be used.`
+          : 'Only assets with a valid accounting adapter are listed. If a token does not appear here, it cannot be used. TIP: Pass a "search" address to filter results.',
       };
     } catch (error) {
       throw new SdkError('Failed to get factory addresses', error);
