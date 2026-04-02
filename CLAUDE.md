@@ -51,9 +51,10 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 ### Token (1 tool)
 - `factor_give_approval` - Approve an ERC20 token for spending by a spender (vault, factory). Must be called before deposits or vault creation if allowance is insufficient. Supports "max" for unlimited approval.
 
-### Vault Operations (14 tools)
+### Vault Operations (15 tools)
 - `factor_get_owned_vaults` - List vaults owned by an address
 - `factor_get_vault_info` - Get detailed vault information (assets, fees, managers, adapters)
+- `factor_vault_analytics` - Get rich vault analytics from Stats API: per-token balances, USD values, performance (24h/7d/30d/90d), TVL, fees. Falls back to on-chain `@factordao/vault-analytics` if Stats API is unavailable.
 - `factor_get_shares` - Get user's shares, total supply, and price per share
 - `factor_get_executions` - Get vault execution history with decoded adapter calls
 - `factor_preview_deposit` - Preview a deposit (read-only)
