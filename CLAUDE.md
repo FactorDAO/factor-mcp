@@ -54,7 +54,7 @@ curl -sSL https://raw.githubusercontent.com/FactorDAO/factor-mcp/main/install.sh
 ### Vault Operations (15 tools)
 - `factor_get_owned_vaults` - List vaults owned by an address
 - `factor_get_vault_info` - Get detailed vault information (assets, fees, managers, adapters)
-- `factor_vault_analytics` - Get rich vault analytics from Stats API: per-token balances, USD values, performance (24h/7d/30d/90d), TVL, fees. Falls back to on-chain `@factordao/vault-analytics` if Stats API is unavailable.
+- `factor_vault_analytics` - Get detailed on-chain vault position breakdown via `@factordao/vault-analytics`: per-token balances, USD values, APY/APR by protocol (Aave, Compound, Morpho, Pendle, idle), and aggregate stats (weighted APY, TVL, net return). Always up to date — reads directly from chain.
 - `factor_get_shares` - Get user's shares, total supply, and price per share
 - `factor_get_executions` - Get vault execution history with decoded adapter calls
 - `factor_preview_deposit` - Preview a deposit (read-only)
