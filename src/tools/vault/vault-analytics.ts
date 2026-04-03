@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { isAddress } from 'viem';
 import { configManager } from '../../config/index.js';
 import { VaultError, SdkError } from '../../utils/errors.js';
+import { FactorVaultAnalytics } from '@factordao/vault-analytics';
+import { ChainId as TokenlistChainId } from '@factordao/tokenlist';
 
 export const vaultAnalyticsSchema = z.object({
   vaultAddress: z.string(),
@@ -9,88 +11,16 @@ export const vaultAnalyticsSchema = z.object({
 
 export type VaultAnalyticsInput = z.infer<typeof vaultAnalyticsSchema>;
 
-const STATS_API_URLS: Record<string, string> = {
-  production: 'https://factor-studio-stats-api.fly.dev',
-  staging: 'https://factor-studio-stats-api.fly.dev',
-  testing: 'https://factor-studio-stats-api-staging.fly.dev',
+const CHAIN_MAP: Record<string, number> = {
+  ARBITRUM_ONE: TokenlistChainId.ARBITRUM_ONE,
+  BASE: TokenlistChainId.BASE,
+  MAINNET: TokenlistChainId.ETHEREUM,
+  OPTIMISM: TokenlistChainId.OPTIMISM,
 };
-
-const CHAIN_IDS: Record<string, number> = {
-  ARBITRUM_ONE: 42161,
-  BASE: 8453,
-  MAINNET: 1,
-  OPTIMISM: 10,
-};
-
-async function fetchFromStatsApi(
-  vaultAddress: string,
-  chain: string,
-  environment: string,
-): Promise<Record<string, unknown> | null> {
-  const baseUrl = STATS_API_URLS[environment] || STATS_API_URLS.production;
-  const chainId = CHAIN_IDS[chain];
-  if (!chainId) return null;
-
-  const url = `${baseUrl}/utils/pro-vaults/${chainId}?vaultAddress=${vaultAddress}`;
-  const res = await fetch(url, {
-    headers: { Origin: 'https://studio.factor.fi' },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!res.ok) return null;
-  const data = await res.json() as Record<string, unknown>;
-  if (!data || data.error) return null;
-  return data;
-}
-
-function formatStatsApiResponse(data: Record<string, unknown>, vaultAddress: string, chain: string) {
-  const balances = data.balances as Record<string, { token: string; balance: string }> | undefined;
-  const positions = balances
-    ? Object.entries(balances).map(([, b]) => ({
-        token: b.token,
-        balance: b.balance,
-      }))
-    : [];
-
-  const performance = {
-    '24h': (data.performance24h as Record<string, string>)?.pnl || 'N/A',
-    '7d': (data.performance7d as Record<string, string>)?.pnl || 'N/A',
-    '30d': (data.performance30d as Record<string, string>)?.pnl || 'N/A',
-    '90d': (data.performance90d as Record<string, string>)?.pnl || 'N/A',
-  };
-
-  return {
-    success: true,
-    source: 'stats-api',
-    vaultAddress,
-    chain,
-    name: data.name,
-    symbol: data.symbol,
-    tvlUsd: data.tvlUsd,
-    totalSupply: data.totalSupply,
-    pricePerShare: data.pricePerShare,
-    pricePerShareUsd: data.pricePerShareUsd,
-    netVaultValue: data.netVaultValue,
-    denominator: data.denominator,
-    assets: data.assets,
-    debts: data.debts,
-    managers: data.managers,
-    managerAdapters: data.managerAdapters,
-    balances: positions,
-    performance,
-    fees: {
-      deposit: data.depositFee,
-      withdraw: data.withdrawFee,
-      management: data.managementFee,
-      performance: data.performanceFee,
-      receiver: data.feesReceiver,
-    },
-  };
-}
 
 export const vaultAnalyticsTool = {
   name: 'factor_vault_analytics',
-  description: 'Get detailed vault analytics from the Stats API: balances per token, USD values, performance (24h/7d/30d/90d), TVL, managers, adapters, and fees. More detailed than factor_get_vault_info. Use this for reports and deep analysis.',
+  description: 'Get detailed vault position breakdown with per-token balances, USD values, APY/APR by protocol (Aave, Compound, Morpho, Pendle, idle tokens), and aggregate stats (weighted APY, TVL breakdown, net return). Reads directly from on-chain — always up to date.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -108,41 +38,20 @@ export const vaultAnalyticsTool = {
       throw new VaultError('Invalid vault address');
     }
 
+    const vaultAddress = validated.vaultAddress as `0x${string}`;
     const chain = configManager.getConfig().chain;
-    const environment = configManager.getEnvironment();
+    const chainId = CHAIN_MAP[chain];
+    if (!chainId) throw new VaultError(`Unsupported chain for analytics: ${chain}`);
 
-    // Primary: Stats API (cached, fast, rich data)
+    const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+    if (!alchemyApiKey) throw new VaultError('ALCHEMY_API_KEY required for vault analytics');
+
     try {
-      const statsData = await fetchFromStatsApi(validated.vaultAddress, chain, environment);
-      if (statsData) {
-        return formatStatsApiResponse(statsData, validated.vaultAddress, chain);
-      }
-    } catch {
-      // Stats API unavailable, fall through to fallback
-    }
-
-    // Fallback: vault-analytics package (direct on-chain)
-    try {
-      const { FactorVaultAnalytics } = await import('@factordao/vault-analytics');
-      const { ChainId } = await import('@factordao/tokenlist');
-
-      const chainIdMap: Record<string, number> = {
-        ARBITRUM_ONE: ChainId.ARBITRUM_ONE,
-        BASE: ChainId.BASE,
-        MAINNET: ChainId.ETHEREUM,
-      };
-      const tokenlistChainId = chainIdMap[chain];
-      if (!tokenlistChainId) throw new VaultError(`Unsupported chain for analytics: ${chain}`);
-
-      const alchemyApiKey = process.env.ALCHEMY_API_KEY;
-      if (!alchemyApiKey) throw new VaultError('ALCHEMY_API_KEY required for fallback analytics');
-
-      const analytics = new FactorVaultAnalytics(tokenlistChainId, alchemyApiKey);
-      const vaultAddr = validated.vaultAddress as `0x${string}`;
+      const analytics = new FactorVaultAnalytics(chainId, alchemyApiKey);
 
       const [deposits, tvlUsd] = await Promise.all([
-        analytics.getVaultDeposits(vaultAddr),
-        analytics.getVaultTVL(vaultAddr, environment as any).catch(() => 0),
+        analytics.getVaultDeposits(vaultAddress),
+        analytics.getVaultTVL(vaultAddress, configManager.getEnvironment() as any).catch(() => 0),
       ]);
 
       const stats = await analytics.calculateVaultStats(deposits, tvlUsd);
@@ -150,17 +59,22 @@ export const vaultAnalyticsTool = {
       const positions = Object.entries(deposits).map(([address, token]) => ({
         address,
         symbol: token.metadata.symbol,
+        name: token.metadata.name,
         type: token.type,
         protocol: token.protocol,
         balance: token.balance_fmt,
         valueUsd: Math.round(token.value_usd * 100) / 100,
         apy: Math.round(token.apy * 100) / 100,
+        apr: Math.round(token.apr * 100) / 100,
+        underlying: token.metadata.underlying,
       }));
+
+      const typeOrder: Record<string, number> = { credit: 0, supply: 1, idle: 2, unknown: 3, debt: 4 };
+      positions.sort((a, b) => (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3));
 
       return {
         success: true,
-        source: 'vault-analytics',
-        vaultAddress: validated.vaultAddress,
+        vaultAddress,
         chain,
         tvlUsd: Math.round(tvlUsd * 100) / 100,
         positions,
@@ -170,13 +84,15 @@ export const vaultAnalyticsTool = {
           totalDebtUsd: Math.round(stats.total_debt_usd * 100) / 100,
           weightedApyCredit: Math.round(stats.weighted_apy_credit * 100) / 100,
           weightedApyDebt: Math.round(stats.weighted_apy_debt * 100) / 100,
+          netReturn: Math.round(stats.net_return * 100) / 100,
           calculatedApy: Math.round(stats.calculated_apy * 100) / 100,
         },
+        positionCount: positions.length,
       };
     } catch (error) {
       if (error instanceof VaultError) throw error;
       const details = error instanceof Error ? error.message : String(error);
-      throw new SdkError(`Failed to get vault analytics (both sources failed): ${details}`, error);
+      throw new SdkError(`Failed to get vault analytics: ${details}`, error);
     }
   },
 };

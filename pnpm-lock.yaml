@@ -15,8 +15,8 @@ importers:
         specifier: 2.1.16
         version: 2.1.16(@ethersproject/address@5.8.0)(@ethersproject/contracts@5.8.0)(@ethersproject/networks@5.8.0)(@ethersproject/providers@5.8.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@ethersproject/solidity@5.8.0)(bufferutil@4.1.0)(hardhat@2.28.4(bufferutil@4.1.0)(ts-node@10.9.2(@types/node@20.19.33)(typescript@5.9.3))(typescript@5.9.3)(utf-8-validate@6.0.6))(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
       '@factordao/vault-analytics':
-        specifier: ^1.0.30
-        version: 1.0.30(bufferutil@4.1.0)(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@1.21.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))(zod@3.25.76)
+        specifier: ^1.0.31
+        version: 1.0.31(bufferutil@4.1.0)(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.26.0(zod@3.25.76)
@@ -370,8 +370,8 @@ packages:
   '@factordao/tokenlist@1.3.44':
     resolution: {integrity: sha512-Kg7EJhu0QtoIWLvkxUZma25GABiIID829I6Mn0gbQj330M0bUs3o21n/v83MblGbkdI89JfA+ABQS6txxzYE0Q==}
 
-  '@factordao/vault-analytics@1.0.30':
-    resolution: {integrity: sha512-BRsMecV5MslvnJdOwCj3GJWtmjnDEbsAyoVdEOl314Y9uWkDFA8QCsiWdHEFTD6Rz2/eHYJM/T8N7hKoiujSuQ==}
+  '@factordao/vault-analytics@1.0.31':
+    resolution: {integrity: sha512-EilU6kbKyvpAZiUQf4B21yZ56EWvYZJwl+h92/PzF7fkLxbDw24RCBQaIlIlWTNG4+Si1zIMOY5j6G2a1VfaEQ==}
 
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
@@ -1069,8 +1069,8 @@ packages:
     resolution: {integrity: sha512-9gYgQKXx+1nP8mP7CzFyaUARhg7D3n1dF/FnErWmu9l6JvGpNUN278h0aSb+QjoiKSWG+iZ3uHrcqk0qrY9RQQ==}
     engines: {node: '>=10'}
 
-  brace-expansion@2.0.2:
-    resolution: {integrity: sha512-Jt0vHyM+jmUBqojB7E1NIYadt0vI0Qxjxd2TErW94wDz+E2LAm5vKMXXwg6ZZBTHPuUlDgQHKXvjGBdfcF1ZDQ==}
+  brace-expansion@2.0.3:
+    resolution: {integrity: sha512-MCV/fYJEbqx68aE58kv2cA/kiky1G8vux3OR6/jbS+jIMe/6fJWa0DTzJU7dqijOWYwHi1t29FlfYI9uytqlpA==}
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -1735,8 +1735,8 @@ packages:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
 
-  lodash@4.17.23:
-    resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   log-symbols@4.1.0:
     resolution: {integrity: sha512-8XPvpAA8uyhfteu8pIvQxpJZ7SYYdpUivZpGy6sFsBuKRY/7rQGavedeB8aK+Zkyq6upMFVL/9AW6vOYzfRyLg==}
@@ -2495,6 +2495,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.20.0:
+    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
@@ -2560,9 +2572,9 @@ snapshots:
 
   '@babel/runtime@7.29.2': {}
 
-  '@bgd-labs/aave-address-book@4.44.22(viem@1.21.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))':
+  '@bgd-labs/aave-address-book@4.44.22(viem@2.47.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))':
     dependencies:
-      viem: 1.21.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
+      viem: 2.47.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
 
   '@cryptoalgebra/core@3.0.0': {}
 
@@ -3011,16 +3023,17 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@factordao/vault-analytics@1.0.30(bufferutil@4.1.0)(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@1.21.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))(zod@3.25.76)':
+  '@factordao/vault-analytics@1.0.31(bufferutil@4.1.0)(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)':
     dependencies:
       '@aave/contract-helpers': 1.37.1(bignumber.js@9.3.1)(ethers@5.8.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(reflect-metadata@0.2.2)(tslib@2.8.1)
       '@aave/math-utils': 1.37.1(bignumber.js@9.3.1)(tslib@2.8.1)
-      '@bgd-labs/aave-address-book': 4.44.22(viem@1.21.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))
+      '@bgd-labs/aave-address-book': 4.44.22(viem@2.47.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))
       '@factordao/tokenlist': 1.3.44(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
       alchemy-sdk: 3.6.5(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       bignumber.js: 9.3.1
       ethers: 5.8.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       reflect-metadata: 0.2.2
+      viem: 2.47.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -3029,7 +3042,6 @@ snapshots:
       - tslib
       - typescript
       - utf-8-validate
-      - viem
       - zod
 
   '@fastify/busboy@2.1.1': {}
@@ -3777,7 +3789,7 @@ snapshots:
       widest-line: 3.1.0
       wrap-ansi: 7.0.0
 
-  brace-expansion@2.0.2:
+  brace-expansion@2.0.3:
     dependencies:
       balanced-match: 1.0.2
 
@@ -4375,7 +4387,7 @@ snapshots:
       io-ts: 1.10.4
       json-stream-stringify: 3.1.6
       keccak: 3.0.4
-      lodash: 4.17.23
+      lodash: 4.18.1
       micro-eth-signer: 0.14.0
       mnemonist: 0.38.5
       mocha: 10.8.2
@@ -4570,7 +4582,7 @@ snapshots:
     dependencies:
       p-locate: 5.0.0
 
-  lodash@4.17.23: {}
+  lodash@4.18.1: {}
 
   log-symbols@4.1.0:
     dependencies:
@@ -4639,7 +4651,7 @@ snapshots:
 
   minimatch@5.1.9:
     dependencies:
-      brace-expansion: 2.0.2
+      brace-expansion: 2.0.3
 
   mnemonist@0.38.5:
     dependencies:
@@ -4874,7 +4886,7 @@ snapshots:
       buffer: 6.0.3
       eventemitter3: 5.0.1
       uuid: 11.1.0
-      ws: 8.18.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 8.20.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
@@ -5320,6 +5332,11 @@ snapshots:
       utf-8-validate: 6.0.6
 
   ws@8.18.3(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+    optionalDependencies:
+      bufferutil: 4.1.0
+      utf-8-validate: 6.0.6
+
+  ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
