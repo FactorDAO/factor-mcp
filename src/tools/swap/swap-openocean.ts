@@ -187,29 +187,13 @@ export const swapOpenOceanTool = {
         account: vaultAddress,
       });
 
-      // Build the swap block using the SDK
-      let block: SendTransactionParams;
-      if (isAll) {
-        block = (strategyBuilder.adapter as any).openOcean.swapAll({
-          tokenIn: validated.tokenIn,
-          tokenOut: validated.tokenOut,
-          openOceanSwapData: quote.data,
-        });
-      } else if (isPercentage) {
-        block = (strategyBuilder.adapter as any).openOcean.swapByPercentage({
-          tokenInAddress: validated.tokenIn,
-          tokenOutAddress: validated.tokenOut,
-          percentage: percentage * 1e16,
-          openOceanSwapData: quote.data,
-        });
-      } else {
-        block = (strategyBuilder.adapter as any).openOcean.swapBN({
-          tokenInAddress: validated.tokenIn,
-          tokenOutAddress: validated.tokenOut,
-          amountInBN: amountWei.toString(),
-          openOceanSwapData: quote.data,
-        });
-      }
+      // Build the swap block — always use swapBN with the pre-calculated amountWei
+      const block: SendTransactionParams = (strategyBuilder.adapter as any).openOcean.swapBN({
+        tokenInAddress: validated.tokenIn,
+        tokenOutAddress: validated.tokenOut,
+        amountInBN: amountWei.toString(),
+        openOceanSwapData: quote.data,
+      });
 
       const executeData = proVault.executeByManager([block]);
 
