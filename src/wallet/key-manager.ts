@@ -289,9 +289,13 @@ export function deleteWallet(name: string): void {
  * Get the address for a wallet, detecting storage type automatically.
  */
 export function getWalletAddress(name: string): string {
-  // Stateless mode: return placeholder address
+  // Stateless mode: there is no wallet to derive an address from. Callers must
+  // pass an explicit ownerAddress (e.g. factor_create_vault). Returning a
+  // placeholder here previously caused fees/owner to be set to 0x...01.
   if (name === '__stateless__') {
-    return '0x0000000000000000000000000000000000000001';
+    throw new Error(
+      'Stateless mode has no wallet address. Pass ownerAddress explicitly to the calling tool.',
+    );
   }
 
   const storage = getWalletStorageType(name);
