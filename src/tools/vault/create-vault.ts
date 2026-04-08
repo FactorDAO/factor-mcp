@@ -214,12 +214,20 @@ export const createVaultTool = {
       throw new VaultError('Invalid asset denominator address');
     }
 
+    // Resolve the address that will own the vault and receive fees.
+    //
+    // IMPORTANT — order matters. In stateless mode `configManager.getWalletName()`
+    // returns the literal placeholder string `'__stateless__'` (truthy) so logs
+    // have something to print. The previous order checked `walletName` FIRST
+    // and only fell through to the stateless branch when walletName was falsy
+    // — which never happened, so the stateless branch was unreachable and
+    // every stateless deploy threw `Stateless mode has no wallet address. Pass
+    // ownerAddress explicitly to the calling tool.` from inside getWalletAddress.
+    //
+    // Check `isStateless()` FIRST and use the caller-supplied `ownerAddress`
+    // before touching getWalletAddress at all.
     let userAddress: Address;
-    const walletName = configManager.getWalletName();
-    if (walletName) {
-      userAddress = getWalletAddress(walletName) as Address;
-    } else if (configManager.isStateless()) {
-      // Stateless mode: ownerAddress parameter required for feeReceiver/owner in calldata
+    if (configManager.isStateless()) {
       const ownerAddr = (input as Record<string, unknown>).ownerAddress as string | undefined;
       if (ownerAddr && isAddress(ownerAddr)) {
         userAddress = ownerAddr as Address;
@@ -227,7 +235,12 @@ export const createVaultTool = {
         throw new VaultError('Stateless mode requires ownerAddress parameter (the wallet that will own the vault and receive fees).');
       }
     } else {
-      throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+      const walletName = configManager.getWalletName();
+      if (walletName) {
+        userAddress = getWalletAddress(walletName) as Address;
+      } else {
+        throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+      }
     }
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
