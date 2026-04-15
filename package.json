@@ -31,7 +31,7 @@
   "dependencies": {
     "@factordao/sdk": "2.1.16",
     "@factordao/sdk-studio": "2.1.16",
-    "@factordao/vault-analytics": "^1.0.31",
+    "@factordao/vault-analytics": "^1.0.33",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^1.10.14",
     "zod": "^3.22.4"
