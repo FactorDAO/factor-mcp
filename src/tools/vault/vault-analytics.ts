@@ -49,10 +49,26 @@ export const vaultAnalyticsTool = {
     try {
       const analytics = new FactorVaultAnalytics(chainId, alchemyApiKey);
 
-      const [deposits, tvlUsd] = await Promise.all([
-        analytics.getVaultDeposits(vaultAddress),
-        analytics.getVaultTVL(vaultAddress, configManager.getEnvironment() as any).catch(() => 0),
-      ]);
+      // Retry-on-empty guard: under concurrent load @factordao/vault-analytics
+      // occasionally returns an empty deposits object (one of its internal
+      // parallel eth_call/eth_getLogs requests times out silently against the
+      // Alchemy RPC instead of throwing). The handler would then format
+      // positions=[]/tvl=0/stats all zero as a "successful" response and the
+      // client treats a live vault as empty. Re-run the fetch once with a
+      // small backoff when deposits is unexpectedly empty — a legitimately
+      // empty vault is rare in the fleet and costs at most ~200ms extra on
+      // that edge case, while the bug is frequent under parallel load.
+      let deposits: Awaited<ReturnType<typeof analytics.getVaultDeposits>> = {} as any;
+      let tvlUsd = 0;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        [deposits, tvlUsd] = await Promise.all([
+          analytics.getVaultDeposits(vaultAddress),
+          analytics.getVaultTVL(vaultAddress, configManager.getEnvironment() as any).catch(() => 0),
+        ]);
+        const isEmpty = !deposits || Object.keys(deposits).length === 0;
+        if (!isEmpty) break;
+        if (attempt === 0) await new Promise(r => setTimeout(r, 200));
+      }
 
       const stats = await analytics.calculateVaultStats(deposits, tvlUsd);
 
