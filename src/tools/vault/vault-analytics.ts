@@ -18,9 +18,11 @@ const CHAIN_MAP: Record<string, number> = {
   OPTIMISM: TokenlistChainId.OPTIMISM,
 };
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 export const vaultAnalyticsTool = {
   name: 'factor_vault_analytics',
-  description: 'Get detailed vault position breakdown with per-token balances, USD values, APY/APR by protocol (Aave, Compound, Morpho, Pendle, idle tokens), and aggregate stats (weighted APY, TVL breakdown, net return). Reads directly from on-chain — always up to date.',
+  description: 'Get detailed vault position breakdown with per-token balances, USD values, APY/APR by protocol (Aave, Compound, Morpho, Pendle, idle tokens), aggregate stats (weighted APY, TVL breakdown, net return), and — when the vault has lending positions — a `lending` block with per-protocol health metrics: Aave V3 account-level healthFactor + USD totals + LT/LTV; Compound V3 per-market healthFactor + isLiquidatable + collateral breakdown; Morpho per-market healthFactor + collateral/borrow USD. Reads directly from on-chain — always up to date. SAFETY: when leveraging, never enter if any healthFactor < 2.0; deleverage if any healthFactor < 1.3.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -79,30 +81,130 @@ export const vaultAnalyticsTool = {
         type: token.type,
         protocol: token.protocol,
         balance: token.balance_fmt,
-        valueUsd: Math.round(token.value_usd * 100) / 100,
-        apy: Math.round(token.apy * 100) / 100,
-        apr: Math.round(token.apr * 100) / 100,
+        valueUsd: round2(token.value_usd),
+        apy: round2(token.apy),
+        apr: round2(token.apr),
         underlying: token.metadata.underlying,
       }));
 
       const typeOrder: Record<string, number> = { credit: 0, supply: 1, idle: 2, unknown: 3, debt: 4 };
       positions.sort((a, b) => (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3));
 
+      // ── Lending health block ──────────────────────────────────────────────
+      // Detects which protocols the vault has exposure to from `deposits`,
+      // then issues the health-data RPCs in parallel. Each protocol fetch
+      // is independent and fails open: an Aave RPC error doesn't kill
+      // Compound/Morpho data and vice versa. Aave returns null + a flag
+      // when chain unsupported or RPC fails; Compound/Morpho return [].
+      const hasAavePosition    = positions.some(p => p.protocol === 'aave');
+      const hasCompoundPosition = positions.some(p => p.protocol === 'compound');
+      const hasMorphoPosition   = positions.some(p => p.protocol === 'morpho');
+
+      const [aaveHealth, compoundHealth, morphoPositions] = await Promise.all([
+        hasAavePosition
+          ? analytics.getAaveAccountHealth(vaultAddress).catch(() => null)
+          : Promise.resolve(null),
+        hasCompoundPosition
+          ? analytics.getCompoundAccountHealth(vaultAddress).catch(() => [])
+          : Promise.resolve([]),
+        hasMorphoPosition
+          ? analytics.getMorphoPositions(vaultAddress).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      // Flatten Morpho — `getMorphoPositions` returns one MorphoPosition per
+      // address, each carrying multiple `marketPositions`. The vault is one
+      // address, so we just collect every market the vault has any exposure
+      // in (collateral or borrow).
+      const morphoMarkets = morphoPositions
+        .flatMap(p => p.marketPositions)
+        .filter(m => m.collateral > 0 || m.borrowAssets > 0)
+        .map(m => ({
+          id: m.id,
+          // Keep HF at full precision — it's the load-bearing number for the
+          // agent's safety threshold (HF < 2.0 = no enter, HF < 1.3 =
+          // deleverage). Rounding to 2 decimals would hide the difference
+          // between e.g. 1.295 and 1.305 right at the deleverage boundary.
+          healthFactor: Number.isFinite(m.healthFactor) ? m.healthFactor : null,
+          collateralUsd: round2(m.collateralUsd),
+          borrowUsd: round2(m.borrowAssetsUsd),
+          supplyUsd: round2(m.supplyAssetsUsd),
+          loanAsset: {
+            address: m.market.loanAsset.address,
+            symbol: m.market.loanAsset.symbol,
+          },
+          collateralAsset: {
+            address: m.market.collateralAsset.address,
+            symbol: m.market.collateralAsset.symbol,
+          },
+        }));
+
+      // Cross-protocol totals are derived straight from `deposits` so we get
+      // them for free even on protocols whose health endpoint failed.
+      let totalSupplyUsd = 0;
+      let totalDebtUsd = 0;
+      for (const p of positions) {
+        if (p.type === 'credit' || p.type === 'supply') totalSupplyUsd += p.valueUsd;
+        else if (p.type === 'debt') totalDebtUsd += p.valueUsd;
+      }
+
+      const hasAnyLending = hasAavePosition || hasCompoundPosition || hasMorphoPosition;
+      const lending = hasAnyLending
+        ? {
+            totals: {
+              totalSupplyUsd: round2(totalSupplyUsd),
+              totalDebtUsd: round2(totalDebtUsd),
+            },
+            aave: aaveHealth
+              ? {
+                  healthFactor: aaveHealth.healthFactor,
+                  totalCollateralUsd: round2(aaveHealth.totalCollateralUsd),
+                  totalDebtUsd: round2(aaveHealth.totalDebtUsd),
+                  availableBorrowsUsd: round2(aaveHealth.availableBorrowsUsd),
+                  liquidationThresholdPct: round2(aaveHealth.liquidationThresholdPct),
+                  ltvPct: round2(aaveHealth.ltvPct),
+                }
+              : null,
+            compound: compoundHealth.length
+              ? compoundHealth.map(m => ({
+                  marketAddress: m.marketAddress,
+                  marketSymbol: m.marketSymbol,
+                  // HF kept at full precision (see Morpho block above).
+                  healthFactor: m.healthFactor,
+                  isLiquidatable: m.isLiquidatable,
+                  totalCollateralUsd: round2(m.totalCollateralUsd),
+                  totalDebtUsd: round2(m.totalDebtUsd),
+                  collateralBreakdown: m.collateralBreakdown.map(c => ({
+                    symbol: c.symbol,
+                    address: c.address,
+                    balance: c.balance,
+                    valueUsd: round2(c.valueUsd),
+                    liquidationFactorPct: round2(c.liquidationFactorPct),
+                  })),
+                }))
+              : null,
+            morpho: morphoMarkets.length ? morphoMarkets : null,
+          }
+        : null;
+
       return {
         success: true,
         vaultAddress,
         chain,
-        tvlUsd: Math.round(tvlUsd * 100) / 100,
+        tvlUsd: round2(tvlUsd),
         positions,
         stats: {
-          totalIdleUsd: Math.round(stats.total_idle_usd * 100) / 100,
-          totalCreditUsd: Math.round(stats.total_credit_usd * 100) / 100,
-          totalDebtUsd: Math.round(stats.total_debt_usd * 100) / 100,
-          weightedApyCredit: Math.round(stats.weighted_apy_credit * 100) / 100,
-          weightedApyDebt: Math.round(stats.weighted_apy_debt * 100) / 100,
-          netReturn: Math.round(stats.net_return * 100) / 100,
-          calculatedApy: Math.round(stats.calculated_apy * 100) / 100,
+          totalIdleUsd: round2(stats.total_idle_usd),
+          totalCreditUsd: round2(stats.total_credit_usd),
+          totalDebtUsd: round2(stats.total_debt_usd),
+          weightedApyCredit: round2(stats.weighted_apy_credit),
+          weightedApyDebt: round2(stats.weighted_apy_debt),
+          netReturn: round2(stats.net_return),
+          calculatedApy: round2(stats.calculated_apy),
         },
+        // `lending` is omitted entirely when the vault has no lending exposure
+        // so the response stays minimal for trader/idle vaults.
+        ...(lending ? { lending } : {}),
         positionCount: positions.length,
       };
     } catch (error) {
