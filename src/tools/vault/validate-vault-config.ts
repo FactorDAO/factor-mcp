@@ -135,6 +135,22 @@ export const validateVaultConfigTool = {
         }));
       };
 
+      // Soft warnings for footguns the factory's `isValid` flag does NOT
+      // catch. Empty `withdrawAssetAddresses` ships an unredeemable vault —
+      // the factory accepts it but Smart Withdraw later reverts on
+      // `withdrawAsset(asset)` because the asset isn't whitelisted. Surface
+      // it explicitly so callers can either set the field or rely on
+      // factor_create_vault's auto-mirror.
+      const warnings: string[] = [];
+      const hasDeposits = (validated.depositAssetAddresses || []).length > 0;
+      const hasWithdraws = (validated.withdrawAssetAddresses || []).length > 0;
+      if (hasDeposits && !hasWithdraws) {
+        warnings.push(
+          'withdrawAssetAddresses is empty while depositAssetAddresses is not — the deployed vault will be unredeemable. ' +
+          'factor_create_vault auto-mirrors deposits when this field is omitted; pass it explicitly only if you intentionally want a deposit-only vault.'
+        );
+      }
+
       return {
         success: true,
         isValid: validationResult.isValid,
@@ -149,6 +165,7 @@ export const validateVaultConfigTool = {
         assetAccountingAddresses: processAssets(validationResult.assetAccountingAddresses),
         debtAddresses: processAssets(validationResult.debtAddresses),
         debtAccountingAddresses: processAssets(validationResult.debtAccountingAddresses),
+        warnings,
         note: validationResult.isValid
           ? 'All addresses are valid and whitelisted in the factory.'
           : 'Some addresses are not whitelisted. Check isValid: false entries above.',

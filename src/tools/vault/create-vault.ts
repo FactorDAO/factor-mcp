@@ -60,6 +60,42 @@ function getChainIdEnum(chain: string): ChainId {
   }
 }
 
+/**
+ * Resolve the final deposit/withdraw asset arrays for a vault deploy. The
+ * denominator MUST appear in both lists — vaults whose `withdrawAssets`
+ * exclude the denominator ship un-redeemable (Smart Withdraw reverts on
+ * `withdrawAsset(asset)` when the asset isn't whitelisted). When the caller
+ * omits or passes an empty `withdrawAssetAddresses`, mirror the deposit list.
+ * Exported as a pure helper so the resolution can be unit-tested without an
+ * RPC endpoint.
+ */
+export function resolveVaultAssetLists(input: {
+  denominatorAddress: string;
+  initialAssetAddresses?: string[];
+  initialDepositAssetAddresses?: string[];
+  initialWithdrawAssetAddresses?: string[];
+}): { depositAssets: string[]; withdrawAssets: string[] } {
+  const denominator = input.denominatorAddress;
+  const denominatorLower = denominator.toLowerCase();
+  const depositCandidates =
+    input.initialDepositAssetAddresses && input.initialDepositAssetAddresses.length > 0
+      ? input.initialDepositAssetAddresses
+      : input.initialAssetAddresses && input.initialAssetAddresses.length > 0
+        ? input.initialAssetAddresses
+        : [denominator];
+  const depositAssets = depositCandidates.some((a) => a.toLowerCase() === denominatorLower)
+    ? [...depositCandidates]
+    : [denominator, ...depositCandidates];
+  const withdrawCandidates =
+    input.initialWithdrawAssetAddresses && input.initialWithdrawAssetAddresses.length > 0
+      ? input.initialWithdrawAssetAddresses
+      : depositAssets;
+  const withdrawAssets = withdrawCandidates.some((a) => a.toLowerCase() === denominatorLower)
+    ? [...withdrawCandidates]
+    : [denominator, ...withdrawCandidates];
+  return { depositAssets, withdrawAssets };
+}
+
 async function getAccountingForAsset(
   chainId: ChainId,
   environment: 'production' | 'staging' | 'testing',
@@ -308,14 +344,34 @@ export const createVaultTool = {
         }
       }
 
+      // Resolve final deposit/withdraw asset arrays. The denominator MUST be
+      // in BOTH lists — vaults whose withdrawAssets exclude the denominator
+      // ship un-redeemable (Smart Withdraw reverts on `withdrawAsset(asset)`
+      // when the asset isn't whitelisted). See `resolveVaultAssetLists` above
+      // for the exact rules; the helper is unit-tested.
+      const { depositAssets: resolvedDepositAssetsRaw, withdrawAssets: resolvedWithdrawAssetsRaw } = resolveVaultAssetLists({
+        denominatorAddress: validated.assetDenominatorAddress,
+        initialAssetAddresses: assetAddresses,
+        initialDepositAssetAddresses: validated.initialDepositAssetAddresses,
+        initialWithdrawAssetAddresses: validated.initialWithdrawAssetAddresses,
+      });
+      const resolvedDepositAssets = resolvedDepositAssetsRaw as Address[];
+      const resolvedWithdrawAssets = resolvedWithdrawAssetsRaw as Address[];
+      if (resolvedWithdrawAssets.length === 0) {
+        throw new VaultError(
+          'withdrawAssetAddresses cannot be empty after resolution. ' +
+          'Pass initialWithdrawAssetAddresses explicitly or rely on auto-mirror from initialDepositAssetAddresses.'
+        );
+      }
+
       // Validate strategy before deployment
       const validationResult = await proFactory.validateStrategy({
         managerAdapters: managerAdapters,
         ownerAdapters: (validated.initialOwnerAdapters || []) as Address[],
         withdrawAdapters: (validated.initialWithdrawAdapters || []) as Address[],
         assetAddresses: assetAddresses as Address[],
-        depositAssetAddresses: (validated.initialDepositAssetAddresses || assetAddresses) as Address[],
-        withdrawAssetAddresses: (validated.initialWithdrawAssetAddresses || []) as Address[],
+        depositAssetAddresses: resolvedDepositAssets,
+        withdrawAssetAddresses: resolvedWithdrawAssets,
         assetAccountingAddresses: assetAccountingAddresses as Address[],
         debtAddresses: (validated.initialDebtAddresses || []) as Address[],
         debtAccountingAddresses: (validated.initialDebtAccountingAddresses || []) as Address[],
@@ -368,8 +424,8 @@ export const createVaultTool = {
           assetDenominatorAddress: validated.assetDenominatorAddress,
           assetDenominatorAccountingAddress: denominatorAccountingAddress,
           initialAssetAddresses: assetAddresses,
-          initialDepositAssetAddresses: validated.initialDepositAssetAddresses || assetAddresses,
-          initialWithdrawAssetAddresses: validated.initialWithdrawAssetAddresses || [],
+          initialDepositAssetAddresses: resolvedDepositAssets,
+          initialWithdrawAssetAddresses: resolvedWithdrawAssets,
           initialDebtAddresses: validated.initialDebtAddresses || [],
           initialAssetAccountingAddresses: assetAccountingAddresses,
           initialDebtAccountingAddresses: validated.initialDebtAccountingAddresses || [],
