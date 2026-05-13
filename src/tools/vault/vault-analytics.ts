@@ -4,6 +4,7 @@ import { configManager } from '../../config/index.js';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { FactorVaultAnalytics } from '@factordao/vault-analytics';
 import { ChainId as TokenlistChainId } from '@factordao/tokenlist';
+import { reconcileMorphoDepositsWithChain } from './morpho-onchain.js';
 
 export const vaultAnalyticsSchema = z.object({
   vaultAddress: z.string(),
@@ -72,20 +73,40 @@ export const vaultAnalyticsTool = {
         if (attempt === 0) await new Promise(r => setTimeout(r, 200));
       }
 
+      deposits = await reconcileMorphoDepositsWithChain(
+        deposits,
+        vaultAddress,
+        chainId,
+        alchemyApiKey,
+      );
+
       const stats = await analytics.calculateVaultStats(deposits, tvlUsd);
 
-      const positions = Object.entries(deposits).map(([address, token]) => ({
-        address,
-        symbol: token.metadata.symbol,
-        name: token.metadata.name,
-        type: token.type,
-        protocol: token.protocol,
-        balance: token.balance_fmt,
-        valueUsd: round2(token.value_usd),
-        apy: round2(token.apy),
-        apr: round2(token.apr),
-        underlying: token.metadata.underlying,
-      }));
+      const positions = Object.entries(deposits)
+        // Drop registry entries the vault knows about but holds nothing of —
+        // the AssetDebt registry can carry phantom addresses (zero balance,
+        // unknown symbol/protocol/type) that bloat the response without
+        // adding signal. A position is considered real if it has any USD
+        // value, any non-zero balance, or a known protocol/type.
+        .filter(([, token]) => {
+          const hasValue = Math.abs(Number(token.value_usd || 0)) > 0;
+          const hasBalance = Number(token.balance_fmt || 0) !== 0;
+          const known =
+            token.type !== 'unknown' || token.protocol !== 'unknown';
+          return hasValue || hasBalance || known;
+        })
+        .map(([address, token]) => ({
+          address,
+          symbol: token.metadata.symbol,
+          name: token.metadata.name,
+          type: token.type,
+          protocol: token.protocol,
+          balance: token.balance_fmt,
+          valueUsd: round2(token.value_usd),
+          apy: round2(token.apy),
+          apr: round2(token.apr),
+          underlying: token.metadata.underlying,
+        }));
 
       const typeOrder: Record<string, number> = { credit: 0, supply: 1, idle: 2, unknown: 3, debt: 4 };
       positions.sort((a, b) => (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3));
