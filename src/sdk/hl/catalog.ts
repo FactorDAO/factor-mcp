@@ -82,6 +82,42 @@ export interface Instrument {
 
 export const SPOT_DEX_SENTINEL = 0xffffffff;
 
+/// Perp dexes the FACTOR vault officially supports as trading venues.
+/// Restricting this list is a PRODUCT decision, not a contract one:
+///
+/// - `main`     — HL-operated tier-1 venue (BTC, ETH, SOL, all ~230 crypto perps).
+/// - `xyz`      — first HIP-3 builder dex (tier-1 third-party). 75 mixed:
+///                commodities, blue-chip stocks, FX, indices. Already
+///                initialised on the live vault since Phase 8.
+/// - `vntl`     — unlocked specifically for asset uniqueness — OPENAI,
+///                ANTHROPIC, SPACEX, MAG7, SEMIS, NUCLEAR, BIOTECH,
+///                DEFENSE, ENERGY, ROBOT — none of which exist on other
+///                dexes. Required init action documented in `HLVault.ts`.
+///
+/// EXCLUDED from this list (visible on HL, but the FACTOR product does
+/// NOT expose them):
+/// - `flx`, `km`, `cash`, `hyna` — duplicate main/xyz tickers with
+///   STRICTLY worse conditions (lower leverage, isolated-only,
+///   coarser lot, ghost-liquidity orderbooks with mark-price drift
+///   up to ±13% vs main). They exist as deployer promo venues; surfacing
+///   them would let users accidentally route into thin liquidity.
+/// - `para` — niche market-cap indices (BTCD, OTHERS, TOTAL2). Skipped
+///   pending product-level decision on whether to expose.
+/// - `abcd` — empty.
+///
+/// To expand:
+///   1. Confirm the dex's `approveBuilderFee` (or equivalent init) flow
+///      against the live vault — see [[reference-hyperliquid-builder-dex-init]].
+///   2. Add the dex name to this set + bump `MAX_KNOWN_BUILDER_DEX` on
+///      the live adapter via `executeByManager(setMaxKnownBuilderDex)`.
+///   3. Bump `maxBuilderDexIndex` on the accounting contract via
+///      `setMaxBuilderDexIndex` so NAV reads the new dex's equity.
+export const SUPPORTED_PERP_DEXES: ReadonlySet<string> = new Set([
+  'main',
+  'xyz',
+  'vntl',
+]);
+
 /// @notice Default ceiling for builder-dex routing. The on-chain adapter
 /// gates which `perpDexIndex` values are reachable via
 /// `transferUsdcBetweenLedgers` (whitelist of `srcDex/dstDex`). Until v5,
@@ -250,6 +286,11 @@ export interface BuildInstrumentCatalogOptions {
   /// Skip the spot-token enumeration entirely (useful for tests that only
   /// care about perps and want to avoid the extra round-trip).
   includeSpot?: boolean;
+  /// Include perps from unsupported dexes (default: false). End-user
+  /// flows MUST default this to false so the catalog only surfaces
+  /// venues the FACTOR product officially supports. Useful set to true
+  /// for analytics / monitoring / catalog diffing.
+  includeUnsupportedDexes?: boolean;
 }
 
 /// @notice Build the full instrument catalog for `vault`. Single SDK call
@@ -263,8 +304,12 @@ export async function buildInstrumentCatalog(
 ): Promise<Instrument[]> {
   const maxBuilder = opts.currentMaxKnownBuilderDex ?? DEFAULT_MAX_KNOWN_BUILDER_DEX;
   const includeSpot = opts.includeSpot ?? true;
+  const includeUnsupported = opts.includeUnsupportedDexes ?? false;
 
-  const dexes = await fetchPerpDexes(vault);
+  const allDexes = await fetchPerpDexes(vault);
+  const dexes = includeUnsupported
+    ? allDexes
+    : allDexes.filter((d) => SUPPORTED_PERP_DEXES.has(d.name));
   const perpPromises = dexes.map(async (d) => {
     const list = await vault.listPerps(d.name === 'main' ? 'main' : d.name);
     return list.map((p) => {

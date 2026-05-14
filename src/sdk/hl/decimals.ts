@@ -91,3 +91,27 @@ function assertSzDec(szDec: number): void {
     );
   }
 }
+
+/// HL Exchange API canonical decimal-string format. Mirrors the
+/// reference Python SDK:
+///
+///   `"{:.{dec}f}".format(x).rstrip("0").rstrip(".")`
+///
+/// i.e. format to `szDecimals` digits, strip trailing zeros, strip a
+/// dangling decimal point. CRITICAL because the action is hashed via
+/// msgpack and "0.10" vs "0.1" produce different byte sequences. HL's
+/// reference encoder always emits the rstrip'd form; if the SDK sends
+/// "0.10" the recovered agent address is garbage and HL rejects with
+/// "User or API Wallet 0x… does not exist".
+///
+/// Examples:
+///   hlFormatDecimal(0.10,   2) → "0.1"
+///   hlFormatDecimal(0.0023, 4) → "0.0023"
+///   hlFormatDecimal(1.00,   2) → "1"
+///   hlFormatDecimal(10,     0) → "10"
+///   hlFormatDecimal(10,     2) → "10"
+export function hlFormatDecimal(n: number, szDecimals: number): string {
+  const s = n.toFixed(szDecimals);
+  if (!s.includes('.')) return s;
+  return s.replace(/0+$/, '').replace(/\.$/, '');
+}

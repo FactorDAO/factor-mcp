@@ -15,6 +15,7 @@
 
 import {
   encodeFunctionData,
+  parseUnits,
   type Address,
   type LocalAccount,
   type PublicClient,
@@ -39,8 +40,10 @@ import {
   encodeWithdrawFromPerp,
   hyperLiquidPerpAdapterAbi,
 } from './coreWriter.js';
+import { SUPPORTED_PERP_DEXES } from './catalog.js';
 import {
   evmToSpotWei,
+  hlFormatDecimal,
   usdcSpotWei,
   markPxToReal,
   sizeWireToReal,
@@ -95,12 +98,12 @@ export interface HLChainAddresses {
 }
 
 export const HL_ADDRESSES_999: HLChainAddresses = Object.freeze({
-  // v3 — adds `transferUsdcBetweenLedgers` for HIP-3 cross-dex funding.
-  adapter: '0xeF3a12429699D1311783ef747bC09cb7794701af',
-  // v2 — multi-dex NAV (sums perpDexIndex 0 + 1 via accountMarginSummary).
-  accounting: '0x4ae0a56E090244C9c27ca12Aabd005b2Afb9B4e6',
-  // v3 — wired to the v3 adapter.
-  selectorSetup: '0xc529E45C07D51604a9138FC4687bc2F921cbA97e',
+  // v5 — configurable `maxKnownBuilderDex` storage-backed (owner setter, default 1 / live 8).
+  adapter: '0x904b57A05265D8Cd9c8e1eDE436FdfDaDFaE5808',
+  // v3 — configurable `maxBuilderDexIndex` (default 8 — covers all live HIP-3 builder dexes).
+  accounting: '0x21DE7b6aB616fF1de35640685Df7508C4904D37A',
+  // v5 — wired to the v5 adapter.
+  selectorSetup: '0x127d63E59126E5c0dEe0839F9C6A20e1D8359DC8',
   factory: '0x4416ddaA726e2A4b537e652d00D8EeB8A80Dc704',
   usdc: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
   cdw: '0x6B9E773128f453f5c2C60935Ee2DE2CBc5390A24',
@@ -154,6 +157,66 @@ export interface PlaceOrderParams {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// HL Info `clearinghouseState` response shape (subset used by getAllPositions)
+// ---------------------------------------------------------------------------
+
+interface ClearinghouseLeverage {
+  type: 'cross' | 'isolated';
+  value: number;
+  rawUsd?: string; // present only when isolated
+}
+
+interface ClearinghousePosition {
+  coin: string;
+  szi: string; // signed decimal
+  entryPx?: string;
+  positionValue?: string;
+  leverage: ClearinghouseLeverage;
+}
+
+interface ClearinghouseStateResponse {
+  assetPositions?: Array<{ type: string; position: ClearinghousePosition }>;
+}
+
+/// @notice Project an HL Info `clearinghouseState` position (decimal-string
+/// fields) onto the SDK's `HLPosition` shape (bigint, native units).
+/// Mirrors the on-chain POSITION precompile decoding so a builder-dex
+/// position is structurally identical to a main-dex one from the caller's
+/// POV.
+function projectBuilderPosition(
+  raw: ClearinghousePosition,
+  szDecimals: number,
+): HLPosition {
+  // `szi` is a signed decimal like '0.005' or '-1.2'. parseUnits doesn't
+  // handle leading '-' on every viem version — split sign first.
+  const negative = raw.szi.startsWith('-');
+  const magnitude = negative ? raw.szi.slice(1) : raw.szi;
+  const sziAbs = parseUnits(magnitude, szDecimals);
+  const szi = negative ? -sziAbs : sziAbs;
+
+  const entryNtl = raw.positionValue
+    ? parseUnits(raw.positionValue, 6)
+    : 0n;
+  const isIsolated = raw.leverage.type === 'isolated';
+  // rawUsd is HL's signed isolated-margin raw. parseUnits w/ explicit sign.
+  let isolatedRawUsd = 0n;
+  if (isIsolated && raw.leverage.rawUsd !== undefined) {
+    const raws = raw.leverage.rawUsd;
+    const rawNeg = raws.startsWith('-');
+    const rawMag = rawNeg ? raws.slice(1) : raws;
+    const mag = parseUnits(rawMag, 6);
+    isolatedRawUsd = rawNeg ? -mag : mag;
+  }
+  return {
+    szi,
+    entryNtl,
+    isolatedRawUsd,
+    leverage: Number(raw.leverage.value),
+    isIsolated,
+  };
+}
+
 function resolvePerpIndex(perp: PerpSymbol | number): number {
   if (typeof perp === 'number') {
     if (!Number.isInteger(perp) || perp < 0) {
@@ -199,6 +262,26 @@ export class HLVault {
   /// numeric index. Refresh via `refreshUniverse()` if a new perp gets
   /// listed mid-session.
   private universeByName: Map<string, { index: number; szDecimals: number; maxLeverage: number; onlyIsolated: boolean }> | null = null;
+
+  /// @notice Resolved builder-dex symbol cache (`xyz:GOLD` → globalAsset
+  /// etc). Two reasons for caching: (a) `resolveBuilderDex` makes two
+  /// HL Info round-trips per call (`perpDexs` + `metaAndAssetCtxs`),
+  /// and (b) the per-call resolution doubles RPC pressure when a
+  /// strategy opens and closes the same builder perp in a tight loop.
+  ///
+  /// TTL of 5 minutes is short enough that a delisting / reindexing
+  /// (which HL announces in advance) won't outlive the cache, but long
+  /// enough that the same trading loop hits the cache for typical
+  /// reconciliation cadences. On TTL expiry we revalidate against
+  /// `perpDexs` (cheap, single call) to confirm the dex name still
+  /// exists and the dex index still maps; if not, we throw
+  /// `HLPreflightError('unknown-perp')` so callers don't silently
+  /// trade against a stale global asset id.
+  private static readonly BUILDER_DEX_TTL_MS = 5 * 60_000;
+  private readonly builderDexCache = new Map<
+    string,
+    { value: { globalAsset: number; szDecimals: number; maxLeverage: number; markPxReal: number }; dexIdx: number; dexName: string; expiresAt: number }
+  >();
 
   constructor(
     vaultAddress: Address,
@@ -322,6 +405,100 @@ export class HLVault {
     return reads;
   }
 
+  /// @notice Open positions across ALL HL perp dexes the vault is active
+  /// on. Main HL dex uses the on-chain `activePerpIndices` set + POSITION
+  /// precompile (same fast path as `getPositions`). HIP-3 builder dexes
+  /// (`xyz`, …) have NO precompile coverage on HyperEVM yet — they're
+  /// read off-chain via HL Info `clearinghouseState` per dex, then
+  /// re-projected onto the `HLPosition` shape so callers don't have to
+  /// branch on origin.
+  ///
+  /// Field mapping for builder-dex positions (HL Info JSON → `HLPosition`):
+  ///   szi             = parseUnits(position.szi, szDecimals)     // signed
+  ///   entryNtl        = parseUnits(position.positionValue, 6)    // 6-dec
+  ///   isolatedRawUsd  = parseUnits(leverage.rawUsd, 6) if isolated else 0n
+  ///   leverage        = leverage.value
+  ///   isIsolated      = leverage.type === 'isolated'
+  ///
+  /// `szDecimals` is fetched from `metaAndAssetCtxs` per dex (cached for
+  /// the duration of the call). Returned tuples carry `dex` ('main' for
+  /// the main HL dex, else the builder-dex name) AND `perp` (the FULL
+  /// qualified name, e.g. `'xyz:GOLD'`, or the main-dex bare ticker
+  /// like `'BTC'`). The asset INDEX is intentionally not surfaced
+  /// because it's not globally unique across dexes — the qualified
+  /// string is what HIP-3-aware callers want.
+  public async getAllPositions(): Promise<
+    Array<{ dex: string; perp: string; position: HLPosition }>
+  > {
+    // ---- Main dex (precompile fast path) ----
+    const mainRaw = await this.getPositions();
+    const mainResolved: Array<{ dex: string; perp: string; position: HLPosition }> = await Promise.all(
+      mainRaw.map(async ({ perp, position }) => {
+        const info = await this.getPerpAssetInfo(perp);
+        return { dex: 'main', perp: info.coin, position };
+      }),
+    );
+
+    // ---- Builder dexes (HL Info API) ----
+    // `perpDexs` returns an ordered array where slot 0 = main = null. Every
+    // other slot is a non-null dex spec; we read positions for each.
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const dexsRes = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'perpDexs' }),
+    });
+    if (!dexsRes.ok) {
+      throw new Error(`HL info perpDexs failed: ${dexsRes.status} ${dexsRes.statusText}`);
+    }
+    const dexs = (await dexsRes.json()) as Array<{ name: string } | null>;
+    const builderDexes = dexs
+      .map((d) => d?.name)
+      .filter((n): n is string => typeof n === 'string' && n.length > 0);
+
+    const builderResults = await Promise.all(
+      builderDexes.map(async (dexName) => {
+        const csRes = await this.exchange.fetchImpl(baseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'clearinghouseState',
+            dex: dexName,
+            user: this.vaultAddress,
+          }),
+        });
+        if (!csRes.ok) {
+          throw new Error(
+            `HL info clearinghouseState(${dexName}) failed: ${csRes.status} ${csRes.statusText}`,
+          );
+        }
+        const cs = (await csRes.json()) as ClearinghouseStateResponse;
+        const assetPositions = cs.assetPositions ?? [];
+        if (assetPositions.length === 0) return [] as Array<{ dex: string; perp: string; position: HLPosition }>;
+        // Need szDecimals per coin in this dex — one shot per dex.
+        const dexPerps = await this.listPerps(dexName);
+        const szDecByCoin = new Map<string, number>(
+          dexPerps.map((p) => [p.name, p.szDecimals]),
+        );
+        return assetPositions
+          .filter((ap) => Number(ap.position.szi) !== 0)
+          .map((ap) => {
+            const coin = ap.position.coin;
+            const szDec = szDecByCoin.get(coin);
+            if (szDec === undefined) {
+              throw new Error(
+                `getAllPositions: no szDecimals for ${coin} on dex ${dexName}`,
+              );
+            }
+            const position = projectBuilderPosition(ap.position, szDec);
+            return { dex: dexName, perp: coin, position };
+          });
+      }),
+    );
+
+    return [...mainResolved, ...builderResults.flat()];
+  }
+
   /// @notice Active perp indices as a plain `number[]` — cheap helper
   /// used by preflight to decide whether opening `perp` would push us
   /// over the `MAX_ACTIVE_PERPS` cap.
@@ -441,6 +618,93 @@ export class HLVault {
   /// @dev Trading on builder dexes (`dex !== 'main'`) is NOT YET supported
   /// by this SDK's `openPosition` / `closePosition` — HIP-3 needs distinct
   /// CoreWriter routing. This method is read-only discovery for now.
+  /// @notice List ALL HyperLiquid perp dexes (main + builder dexes) with
+  /// index, name, type, asset count and metadata. Single HL Info round-trip
+  /// (`perpDexs`). Use this to discover what trading venues exist on HL
+  /// without hardcoding names. `index 0` is always the main dex (encoded as
+  /// `null` upstream, normalised to `'main'` here).
+  ///
+  /// @returns Array `[{ index, name, type, deployer?, feeRecipient?,
+  ///                    assetCount }]` in HL's canonical order. The
+  ///          `index` doubles as the `perpDexIndex` used by the on-chain
+  ///          adapter for cross-dex USDC transfers (action 13 sendAsset).
+  public async listDexes(opts: { includeUnsupported?: boolean } = {}): Promise<
+    Array<{
+      index: number;
+      name: string;
+      type: 'main' | 'builder';
+      deployer?: string;
+      feeRecipient?: string;
+      assetCount: number;
+      supported: boolean;
+    }>
+  > {
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const res = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'perpDexs' }),
+    });
+    if (!res.ok) throw new Error(`HL info perpDexs failed: ${res.status} ${res.statusText}`);
+    const raw = (await res.json()) as Array<{
+      name: string;
+      deployer?: string;
+      feeRecipient?: string;
+      assetToStreamingOiCap?: Array<[string, string]>;
+    } | null>;
+    const all = raw.map((d, i) => {
+      const name = d?.name ?? 'main';
+      const supported = SUPPORTED_PERP_DEXES.has(name);
+      if (!d) {
+        return { index: i, name: 'main', type: 'main' as const, assetCount: 0, supported };
+      }
+      return {
+        index: i,
+        name,
+        type: 'builder' as const,
+        deployer: d.deployer,
+        feeRecipient: d.feeRecipient,
+        assetCount: d.assetToStreamingOiCap?.length ?? 0,
+        supported,
+      };
+    });
+    return opts.includeUnsupported ? all : all.filter((d) => d.supported);
+  }
+
+  /// @notice Full market map: every dex × every asset in one structure.
+  /// Use this for UI dropdowns, dashboards, or any 'show me what I can
+  /// trade'-style flow. Fetches `perpDexs` (1 call) + `metaAndAssetCtxs`
+  /// per dex (N parallel calls). Total ~N+1 HTTP round-trips for N dexes.
+  /// Currently ~9 dexes → 10 round-trips, completes in <1s.
+  ///
+  /// For per-dex `assetCount` only (no asset details), use `listDexes()`.
+  /// For a single dex's assets, use `listPerps(dexName)`.
+  public async getMarketMap(opts: { includeUnsupported?: boolean } = {}): Promise<
+    Array<{
+      dex: { index: number; name: string; type: 'main' | 'builder' };
+      assets: Array<{
+        index: number;
+        name: string;
+        szDecimals: number;
+        maxLeverage: number;
+        onlyIsolated: boolean;
+        markPx?: number;
+      }>;
+    }>
+  > {
+    const dexes = await this.listDexes(opts);
+    const withAssets = await Promise.all(
+      dexes.map(async (d) => {
+        const assets = await this.listPerps(d.name === 'main' ? 'main' : d.name);
+        return {
+          dex: { index: d.index, name: d.name, type: d.type },
+          assets,
+        };
+      }),
+    );
+    return withAssets;
+  }
+
   public async listPerps(
     dex: 'main' | 'xyz' | string = 'main',
   ): Promise<
@@ -620,10 +884,16 @@ export class HLVault {
     dex?: 'xyz';
     usdcAmount: string;
   }): SendTransactionParams {
-    const dstDex = args.dex === 'xyz' ? HLVault.DEX_XYZ : HLVault.DEX_XYZ;
+    const dexName = args.dex ?? 'xyz';
+    if (dexName !== 'xyz') {
+      throw new HLPreflightError(
+        'unknown-perp',
+        `unsupported builder dex: ${dexName}`,
+      );
+    }
     return this.transferUsdcBetweenLedgers({
       srcDex: HLVault.DEX_MAIN,
-      dstDex,
+      dstDex: HLVault.DEX_XYZ,
       usdcAmount: args.usdcAmount,
     });
   }
@@ -634,9 +904,15 @@ export class HLVault {
     dex?: 'xyz';
     usdcAmount: string;
   }): SendTransactionParams {
-    const srcDex = args.dex === 'xyz' ? HLVault.DEX_XYZ : HLVault.DEX_XYZ;
+    const dexName = args.dex ?? 'xyz';
+    if (dexName !== 'xyz') {
+      throw new HLPreflightError(
+        'unknown-perp',
+        `unsupported builder dex: ${dexName}`,
+      );
+    }
     return this.transferUsdcBetweenLedgers({
-      srcDex,
+      srcDex: HLVault.DEX_XYZ,
       dstDex: HLVault.DEX_MAIN,
       usdcAmount: args.usdcAmount,
     });
@@ -940,12 +1216,55 @@ export class HLVault {
 
   /// @notice Resolve a builder-dex symbol like `'xyz:GOLD'` to its global
   /// asset index per HL HIP-3: `asset = 100000 + perp_dex_index * 10000 +
-  /// asset_idx_within_dex`. Caches the (dex, asset_idx) lookup.
+  /// asset_idx_within_dex`. Cached for `BUILDER_DEX_TTL_MS` (5 min);
+  /// on TTL expiry we revalidate against `perpDexs` to confirm the dex
+  /// name/index still maps before returning the cached resolution.
+  ///
+  /// NOTE on `markPxReal`: this is captured at FIRST resolution and
+  /// kept in the cache for the lifetime of the entry. It's good
+  /// enough for the min-notional preflight in `openPositionOffChain`,
+  /// but callers needing a live mark for limit-price computation
+  /// MUST re-fetch via `metaAndAssetCtxs` (see `closePositionOffChain`).
   public async resolveBuilderDex(symbol: string): Promise<{ globalAsset: number; szDecimals: number; maxLeverage: number; markPxReal: number }> {
     const colon = symbol.indexOf(':');
     if (colon < 0) throw new HLPreflightError('unknown-perp', `not a builder-dex symbol: ${symbol}`, { perp: symbol });
     const dexName = symbol.slice(0, colon);
     const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+
+    const now = Date.now();
+    const cached = this.builderDexCache.get(symbol);
+    if (cached) {
+      if (cached.expiresAt > now) {
+        // Fresh — return as-is.
+        return cached.value;
+      }
+      // Stale: cheap single-call revalidation against `perpDexs` to
+      // confirm the dex name still exists at the same index. If the
+      // builder dex was delisted or reindexed, every cached
+      // `globalAsset` for that symbol is wrong — fall through to a
+      // full re-resolution OR throw if the dex disappeared.
+      const dexsRes = await this.exchange.fetchImpl(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'perpDexs' }),
+      });
+      const dexs = (await dexsRes.json()) as Array<{ name: string } | null>;
+      const liveIdx = dexs.findIndex((d) => d?.name === cached.dexName);
+      if (liveIdx === cached.dexIdx) {
+        // Still maps — extend TTL without re-fetching the universe.
+        cached.expiresAt = now + HLVault.BUILDER_DEX_TTL_MS;
+        return cached.value;
+      }
+      // Mismatch (or removed): invalidate and let the full path either
+      // re-resolve cleanly or surface `unknown-perp`.
+      this.builderDexCache.delete(symbol);
+      if (liveIdx < 0) {
+        throw new HLPreflightError('unknown-perp', `builder dex ${cached.dexName} no longer registered`, { perp: symbol });
+      }
+      // dexIdx shifted — fall through to full re-resolution.
+    }
+
+    // Full resolution path.
     // Need: perp_dex_index of `dexName` + asset_idx of `symbol` in that dex's universe.
     // Step 1: perpDexs lists all dexes by name in order (slot 0 = main = null).
     const dexsRes = await this.exchange.fetchImpl(baseUrl, {
@@ -960,12 +1279,37 @@ export class HLVault {
     const dexPerps = await this.listPerps(dexName);
     const hit = dexPerps.find((p) => p.name === symbol);
     if (!hit) throw new HLPreflightError('unknown-perp', `${symbol} not found in dex ${dexName}`, { perp: symbol });
-    return {
+    const value = {
       globalAsset: 100_000 + dexIdx * 10_000 + hit.index,
       szDecimals: hit.szDecimals,
       maxLeverage: hit.maxLeverage,
       markPxReal: hit.markPx ?? 0,
     };
+    this.builderDexCache.set(symbol, {
+      value,
+      dexIdx,
+      dexName,
+      expiresAt: now + HLVault.BUILDER_DEX_TTL_MS,
+    });
+    return value;
+  }
+
+  /// @notice Fetch a LIVE mark for a builder-dex perp. Used by close
+  /// flows where stale-cached mark would mis-price the IOC limit and
+  /// cause partial / unfilled close orders. Reuses the same
+  /// `metaAndAssetCtxs` path as `listPerps` but only round-trips once
+  /// and only extracts the one mark.
+  private async getBuilderDexMarkPxReal(symbol: string): Promise<number> {
+    const colon = symbol.indexOf(':');
+    if (colon < 0) throw new HLPreflightError('unknown-perp', `not a builder-dex symbol: ${symbol}`, { perp: symbol });
+    const dexName = symbol.slice(0, colon);
+    const dexPerps = await this.listPerps(dexName);
+    const hit = dexPerps.find((p) => p.name === symbol);
+    if (!hit) throw new HLPreflightError('unknown-perp', `${symbol} not found in dex ${dexName}`, { perp: symbol });
+    if (!hit.markPx || hit.markPx <= 0) {
+      throw new HLPreflightError('invalid-input', `no mark for ${symbol}`, { perp: symbol });
+    }
+    return hit.markPx;
   }
 
   /// @notice Open a position on a builder-dex perp (xyz:GOLD, xyz:BRENTOIL,
@@ -1002,7 +1346,7 @@ export class HLVault {
       asset: info.globalAsset,
       isBuy: args.isLong,
       limitPxReal: String(limitRounded),
-      sizeReal: sizeFloored.toFixed(info.szDecimals),
+      sizeReal: hlFormatDecimal(sizeFloored, info.szDecimals),
       reduceOnly: false,
       tif: 'Ioc',
     });
@@ -1018,33 +1362,55 @@ export class HLVault {
     slippageBps?: number;
   }): Promise<HlExchangeResponse> {
     const info = await this.resolveBuilderDex(args.perp);
+    // `info.markPxReal` comes from `resolveBuilderDex` which is cached
+    // up to BUILDER_DEX_TTL_MS — fine for the min-notional preflight
+    // (sizing is a rough sanity check anyway) but NOT for limit-price
+    // computation, where a stale mark can put the IOC band the wrong
+    // side of true price and cause an unfilled close. Re-fetch the
+    // live mark for the limit and keep the cached mark for preflight.
     if (info.markPxReal <= 0) throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
     // Read current position via clearinghouseState (dex-aware).
     const dexName = args.perp.split(':')[0];
     const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
-    const res = await this.exchange.fetchImpl(baseUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'clearinghouseState', dex: dexName, user: this.vaultAddress }),
-    });
-    const cs = (await res.json()) as { assetPositions?: Array<{ position: { coin: string; szi: string } }> };
+    const [csRes, markRealLive] = await Promise.all([
+      this.exchange.fetchImpl(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'clearinghouseState', dex: dexName, user: this.vaultAddress }),
+      }),
+      this.getBuilderDexMarkPxReal(args.perp),
+    ]);
+    const cs = (await csRes.json()) as { assetPositions?: Array<{ position: { coin: string; szi: string } }> };
     // HL returns the FULL qualified coin name (e.g. 'xyz:GOLD'), not the
     // bare symbol after the colon — match against args.perp directly.
     const pos = cs.assetPositions?.find((p) => p.position.coin === args.perp);
     if (!pos || Number(pos.position.szi) === 0) {
       throw new HLPreflightError('invalid-input', `no open position on ${args.perp}`, { perp: args.perp });
     }
+    const sziAbs = Math.abs(Number(pos.position.szi));
     const isLong = Number(pos.position.szi) > 0;
     const bandBps = args.slippageBps ?? 1500;
     // Close side flips: long → sell, short → buy.
     const isClosingBuy = !isLong;
+    // Use the FRESH mark for limit-price band so an old cached mark
+    // can't drag the IOC limit to the wrong side of true price.
     const limitReal = isClosingBuy
-      ? info.markPxReal * (1 + bandBps / 10_000)
-      : info.markPxReal * (1 - bandBps / 10_000);
+      ? markRealLive * (1 + bandBps / 10_000)
+      : markRealLive * (1 - bandBps / 10_000);
     const limitRounded = tickRound(limitReal, info.szDecimals);
+    // Preflight min-notional uses the cached mark (it's good enough as
+    // a "did the user pass something absurdly small?" check).
     const sizeRaw = args.sizeUsd / info.markPxReal;
     const lotStep = 10 ** -info.szDecimals;
-    const sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
+    let sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
+    // Heuristic full-close: if the caller's notional rounds to ≥99% of
+    // the actual position size, use `szi` directly. Avoids leaving
+    // dust on a slightly-stale notional (mark moved between the
+    // caller fetching the position and the SDK pricing the close);
+    // also avoids accumulating dust positions across repeated closes.
+    if (sizeFloored >= sziAbs * 0.99) {
+      sizeFloored = sziAbs;
+    }
     if (sizeFloored <= 0) {
       throw new HLPreflightError('min-notional', `sizeUsd too small for ${args.perp} lot`, { notionalUsd: args.sizeUsd });
     }
@@ -1052,7 +1418,7 @@ export class HLVault {
       asset: info.globalAsset,
       isBuy: isClosingBuy,
       limitPxReal: String(limitRounded),
-      sizeReal: sizeFloored.toFixed(info.szDecimals),
+      sizeReal: hlFormatDecimal(sizeFloored, info.szDecimals),
       reduceOnly: true,
       tif: 'Ioc',
     });
@@ -1094,5 +1460,52 @@ export class HLVault {
   /// @notice Aggregate perp ledger view (free margin + open exposure).
   public async accountSummary() {
     return readAccountMarginSummary(this.client, this.vaultAddress);
+  }
+
+  // -------------------------------------------------------------------------
+  // Catalog / search / batch convenience wrappers (see catalog.ts, search.ts,
+  // batch.ts for full type definitions). These are thin pass-throughs so
+  // strategy / MCP code can stay one-import deep.
+  // -------------------------------------------------------------------------
+
+  /// @notice Build the unified instrument catalog (perps + spot) for this
+  /// vault. Single-shot fetch, ~1 second total.
+  public async getInstrumentCatalog(opts?: import('./catalog.js').BuildInstrumentCatalogOptions) {
+    const { buildInstrumentCatalog } = await import('./catalog.js');
+    return buildInstrumentCatalog(this, opts);
+  }
+
+  /// @notice Fuzzy search over a pre-built catalog. Returns scored matches.
+  public async searchInstruments(
+    catalog: import('./catalog.js').Instrument[],
+    query: string,
+    opts?: import('./search.js').SearchOptions,
+  ): Promise<import('./search.js').SearchHit[]> {
+    const { searchInstruments } = await import('./search.js');
+    return searchInstruments(catalog, query, opts);
+  }
+
+  /// @notice Strict single-match resolver. Throws on ambiguity / no match.
+  public async resolveInstrument(catalog: import('./catalog.js').Instrument[], queryOrId: string) {
+    const { resolveInstrument } = await import('./search.js');
+    return resolveInstrument(catalog, queryOrId);
+  }
+
+  /// @notice Compile an open-position batch plan.
+  public async compileOpenPosition(
+    catalog: import('./catalog.js').Instrument[],
+    args: import('./batch.js').CompileOpenArgs,
+  ): Promise<import('./batch.js').BatchPlan> {
+    const { compileOpenPosition } = await import('./batch.js');
+    return compileOpenPosition(this, catalog, args);
+  }
+
+  /// @notice Compile a close-position batch plan.
+  public async compileClosePosition(
+    catalog: import('./catalog.js').Instrument[],
+    args: import('./batch.js').CompileCloseArgs,
+  ): Promise<import('./batch.js').BatchPlan> {
+    const { compileClosePosition } = await import('./batch.js');
+    return compileClosePosition(this, catalog, args);
   }
 }

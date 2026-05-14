@@ -130,6 +130,80 @@ const AGENT_TYPES = {
   ],
 } as const;
 
+/// @notice Build a NEW action object with keys in HL's canonical order
+/// for msgpack encoding. Previously we relied on JS object insertion
+/// order via `{ sortKeys: false }`, which works today but is fragile:
+/// a minifier, a transpiler IIFE, or any innocuous refactor that
+/// reorders the literal would silently change the msgpack digest and
+/// break HL signature recovery (HL would recover a different agent
+/// address than we expect, and the action would be rejected).
+///
+/// The canonical order matches the reference HL Python SDK
+/// (`hyperliquid-python-sdk/hyperliquid/utils/signing.py`) and the
+/// per-action comments at the top of this file:
+///   - OrderAction:               { type, orders, grouping, builder? }
+///     each order:                { a, b, p, s, r, t, c? }
+///   - CancelByCloidAction:       { type, cancels }
+///     each cancel:               { asset, cloid }
+///   - UpdateLeverageAction:      { type, asset, isCross, leverage }
+///   - UpdateIsolatedMarginAction:{ type, asset, isBuy, ntli }
+function canonicalizeAction(a: HlExchangeAction): unknown {
+  switch (a.type) {
+    case 'order': {
+      const orders = a.orders.map((o) => {
+        const co: Record<string, unknown> = {
+          a: o.a,
+          b: o.b,
+          p: o.p,
+          s: o.s,
+          r: o.r,
+          t: o.t,
+        };
+        if (o.c !== undefined) co.c = o.c;
+        return co;
+      });
+      const out: Record<string, unknown> = {
+        type: a.type,
+        orders,
+        grouping: a.grouping,
+      };
+      // `builder` is not in our typed `OrderAction` today, but mirror
+      // the HL canonical slot so adding it later doesn't change the
+      // digest of pre-existing fields.
+      const maybeBuilder = (a as unknown as { builder?: unknown }).builder;
+      if (maybeBuilder !== undefined) out.builder = maybeBuilder;
+      return out;
+    }
+    case 'cancelByCloid': {
+      return {
+        type: a.type,
+        cancels: a.cancels.map((c) => ({ asset: c.asset, cloid: c.cloid })),
+      };
+    }
+    case 'updateLeverage': {
+      return {
+        type: a.type,
+        asset: a.asset,
+        isCross: a.isCross,
+        leverage: a.leverage,
+      };
+    }
+    case 'updateIsolatedMargin': {
+      return {
+        type: a.type,
+        asset: a.asset,
+        isBuy: a.isBuy,
+        ntli: a.ntli,
+      };
+    }
+    default: {
+      // Exhaustiveness: TS will surface a missing case here at compile time.
+      const _exhaustive: never = a;
+      throw new Error(`canonicalizeAction: unknown action ${JSON.stringify(_exhaustive)}`);
+    }
+  }
+}
+
 /// @notice HL's canonical action hash. Verified against the reference
 /// Python SDK (`hyperliquid-python-sdk/hyperliquid/utils/signing.py`):
 ///
@@ -140,12 +214,16 @@ const AGENT_TYPES = {
 /// We tried sorted-JSON first — HL recovered a wrong agent address
 /// because the msgpack digest is different. Don't substitute msgpack
 /// with anything else here.
-function connectionId(
+export function connectionId(
   action: HlExchangeAction,
   nonce: number,
   vaultAddress?: Address,
 ): Hex {
-  const actionBytes = msgpackEncode(action, { sortKeys: false });
+  // Canonicalize key order BEFORE msgpack so we don't depend on JS
+  // engine insertion order. `sortKeys: false` is intentional — HL's
+  // canonical order is NOT alphabetical (e.g. OrderAction is
+  // {type, orders, grouping}, not {grouping, orders, type}).
+  const actionBytes = msgpackEncode(canonicalizeAction(action), { sortKeys: false });
   const nonceBytes = new Uint8Array(8);
   // Big-endian u64 nonce — HL uses millisecond timestamps so fits in 53 bits.
   const view = new DataView(nonceBytes.buffer);
@@ -339,7 +417,7 @@ export class HLExchangeClient {
   /// (incl. tests) can craft custom actions if HL adds new ones.
   public async send(
     action: HlExchangeAction,
-    nonce: number = Date.now(),
+    nonce: number = this.nextNonce(),
   ): Promise<HlExchangeResponse> {
     // CRITICAL: do NOT pass vaultAddress in the connectionId hash OR in the
     // wire envelope. HL reserves `vaultAddress` for its MANAGED share-vault
@@ -375,13 +453,38 @@ export class HLExchangeClient {
         `HL exchange ${res.status} ${res.statusText}: ${text.slice(0, 256)}`,
       );
     }
+    let parsed: HlExchangeResponse;
     try {
-      return JSON.parse(text) as HlExchangeResponse;
+      parsed = JSON.parse(text) as HlExchangeResponse;
     } catch {
       throw new Error(
         `HL exchange returned non-JSON body: ${text.slice(0, 256)}`,
       );
     }
+    // HL signals action-level rejections (insufficient margin, bad limit
+    // price, unknown asset, etc.) via `{status:'err', response:<reason>}`
+    // on a 200 OK. The previous behavior of silently returning the err
+    // object made caller code easy to write but easy to misread — every
+    // call site has to remember to inspect `.status`. Failing loudly is
+    // the safer default; callers that intentionally tolerate err can
+    // wrap in try/catch.
+    if (parsed.status === 'err') {
+      throw new Error(`HL exchange rejected action: ${parsed.response}`);
+    }
+    return parsed;
+  }
+
+  /// Monotonically-increasing per-instance nonce. HL requires nonces to
+  /// be strictly increasing per agent inside a sliding window; using bare
+  /// `Date.now()` collides when two send() calls land in the same
+  /// millisecond. We anchor to wall time so cross-instance replays still
+  /// pass HL's freshness window.
+  private _lastNonce = 0;
+  private nextNonce(): number {
+    const now = Date.now();
+    const next = now > this._lastNonce ? now : this._lastNonce + 1;
+    this._lastNonce = next;
+    return next;
   }
 }
 
