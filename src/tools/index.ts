@@ -89,6 +89,11 @@ import { hlSetSlippageCapTool } from './hl/hl-set-slippage-cap.js';
 import { hlTransferToBuilderDexTool } from './hl/hl-transfer-to-builder-dex.js';
 import { hlTransferFromBuilderDexTool } from './hl/hl-transfer-from-builder-dex.js';
 import { hlListPerpsTool } from './hl/hl-list-perps.js';
+import { hlListInstrumentsTool } from './hl/hl-list-instruments.js';
+import { hlSearchInstrumentTool } from './hl/hl-search-instrument.js';
+import { hlResolveInstrumentTool } from './hl/hl-resolve-instrument.js';
+import { hlCompileOpenTool } from './hl/hl-compile-open.js';
+import { hlCompileCloseTool } from './hl/hl-compile-close.js';
 
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
@@ -179,6 +184,11 @@ export {
   hlTransferToBuilderDexTool,
   hlTransferFromBuilderDexTool,
   hlListPerpsTool,
+  hlListInstrumentsTool,
+  hlSearchInstrumentTool,
+  hlResolveInstrumentTool,
+  hlCompileOpenTool,
+  hlCompileCloseTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -271,7 +281,7 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // HyperLiquid (13)
+  // HyperLiquid (18)
   hlOpenPositionTool,
   hlClosePositionTool,
   hlSetLeverageTool,
@@ -285,6 +295,11 @@ export const allTools = [
   hlTransferToBuilderDexTool,
   hlTransferFromBuilderDexTool,
   hlListPerpsTool,
+  hlListInstrumentsTool,
+  hlSearchInstrumentTool,
+  hlResolveInstrumentTool,
+  hlCompileOpenTool,
+  hlCompileCloseTool,
 
   // Yield (1)
   pendleLpTool,
@@ -374,6 +389,11 @@ export type ToolName =
   | 'factor_hl_transfer_to_builder_dex'
   | 'factor_hl_transfer_from_builder_dex'
   | 'factor_hl_list_perps'
+  | 'factor_hl_list_instruments'
+  | 'factor_hl_search_instrument'
+  | 'factor_hl_resolve_instrument'
+  | 'factor_hl_compile_open'
+  | 'factor_hl_compile_close'
   | 'factor_pendle_lp'
   | 'factor_flashloan'
   | 'factor_preview_transaction'

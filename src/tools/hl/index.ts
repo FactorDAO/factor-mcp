@@ -11,3 +11,8 @@ export { hlSetSlippageCapTool } from './hl-set-slippage-cap.js';
 export { hlTransferToBuilderDexTool } from './hl-transfer-to-builder-dex.js';
 export { hlTransferFromBuilderDexTool } from './hl-transfer-from-builder-dex.js';
 export { hlListPerpsTool } from './hl-list-perps.js';
+export { hlListInstrumentsTool } from './hl-list-instruments.js';
+export { hlSearchInstrumentTool } from './hl-search-instrument.js';
+export { hlResolveInstrumentTool } from './hl-resolve-instrument.js';
+export { hlCompileOpenTool } from './hl-compile-open.js';
+export { hlCompileCloseTool } from './hl-compile-close.js';

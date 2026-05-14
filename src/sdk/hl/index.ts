@@ -144,3 +144,41 @@ export {
   type UpdateLeverageAction,
   type UpdateIsolatedMarginAction,
 } from './exchange.js';
+
+// ---------------------------------------------------------------------------
+// Instrument catalog + search + batch compiler
+// ---------------------------------------------------------------------------
+
+export {
+  buildInstrumentCatalog,
+  categorize,
+  displayNameFor,
+  DEFAULT_MAX_KNOWN_BUILDER_DEX,
+  SPOT_DEX_SENTINEL,
+  type Instrument,
+  type InstrumentCategory,
+  type InstrumentType,
+  type BuildInstrumentCatalogOptions,
+} from './catalog.js';
+
+export {
+  searchInstruments,
+  resolveInstrument,
+  type SearchHit,
+  type SearchOptions,
+} from './search.js';
+
+export {
+  compileOpenPosition,
+  compileClosePosition,
+  executeBatchPlan,
+  type BatchPlan,
+  type BatchPlanParams,
+  type BatchPlanEstimates,
+  type BatchExecutor,
+  type CompileOpenArgs,
+  type CompileCloseArgs,
+  type ExecuteBatchPlanOptions,
+  type ExecuteBatchPlanResult,
+  type Operation,
+} from './batch.js';
