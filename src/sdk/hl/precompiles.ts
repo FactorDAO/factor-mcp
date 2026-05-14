@@ -73,6 +73,7 @@ export async function readPosition(
     [user, perp],
   );
   const result = await rawCall(client, PRECOMPILE.POSITION, data);
+  // All-static struct → flat decode works (no top-level offset wrapper).
   const [szi, entryNtl, isolatedRawUsd, leverage, isIsolated] =
     decodeAbiParameters(
       [
@@ -107,6 +108,7 @@ export async function readSpotBalance(
     [user, token],
   );
   const result = await rawCall(client, PRECOMPILE.SPOT_BALANCE, data);
+  // All-static struct → flat decode.
   const [total, hold, entryNtl] = decodeAbiParameters(
     [{ type: 'uint64' }, { type: 'uint64' }, { type: 'uint64' }],
     result,
@@ -145,6 +147,7 @@ export async function readAccountMarginSummary(
     PRECOMPILE.ACCOUNT_MARGIN_SUMMARY,
     data,
   );
+  // All-static struct → flat decode.
   const [accountValue, marginUsed, ntlPos, rawUsd] = decodeAbiParameters(
     [
       { type: 'int64' },
@@ -207,23 +210,39 @@ export async function readPerpAssetInfo(
   assertPerp(perp);
   const data = encodeAbiParameters([{ type: 'uint32' }], [perp]);
   const result = await rawCall(client, PRECOMPILE.PERP_ASSET_INFO, data);
-  const [coin, marginTableId, szDecimals, maxLeverage, onlyIsolated] =
-    decodeAbiParameters(
-      [
-        { type: 'string' },
-        { type: 'uint32' },
-        { type: 'uint8' },
-        { type: 'uint8' },
-        { type: 'bool' },
-      ],
-      result,
-    );
+  // HL precompiles return STRUCTS, not flat parameter lists. Decode as
+  // a single tuple so the head/tail offsets for the dynamic `coin`
+  // string land in the right place. Empirically, decoding flat blows up
+  // with `InvalidHexBooleanError` because the `bool` slot ends up reading
+  // the leverage byte.
+  const [info] = decodeAbiParameters(
+    [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'coin', type: 'string' },
+          { name: 'marginTableId', type: 'uint32' },
+          { name: 'szDecimals', type: 'uint8' },
+          { name: 'maxLeverage', type: 'uint8' },
+          { name: 'onlyIsolated', type: 'bool' },
+        ],
+      },
+    ],
+    result,
+  );
+  const i = info as {
+    coin: string;
+    marginTableId: number;
+    szDecimals: number;
+    maxLeverage: number;
+    onlyIsolated: boolean;
+  };
   return {
-    coin: coin as string,
-    marginTableId: Number(marginTableId),
-    szDecimals: Number(szDecimals),
-    maxLeverage: Number(maxLeverage),
-    onlyIsolated: onlyIsolated as boolean,
+    coin: i.coin,
+    marginTableId: Number(i.marginTableId),
+    szDecimals: Number(i.szDecimals),
+    maxLeverage: Number(i.maxLeverage),
+    onlyIsolated: i.onlyIsolated,
   };
 }
 

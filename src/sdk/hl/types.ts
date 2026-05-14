@@ -218,8 +218,11 @@ export const HL_MIN_NOTIONAL_USD = 10;
 export const HL_MAX_SLIPPAGE_BPS = 3000;
 export const HL_IOC_MIN_BAND_BPS = 1000;
 export const HL_MIN_SETTLE_DELAY_BLOCKS = 5;
-export const HL_MAX_PENDING_CLOIDS = 32;
-export const HL_MAX_ACTIVE_PERPS = 16;
+// MUST match HyperLiquidPerpStorage.MAX_PENDING_CLOIDS on the adapter (= 100).
+// SDK previously had 32 which caused spurious pending-cap rejections.
+export const HL_MAX_PENDING_CLOIDS = 100;
+// MUST match HyperLiquidPerpStorage.MAX_ACTIVE_PERPS (= 50).
+export const HL_MAX_ACTIVE_PERPS = 50;
 export const HL_USDC_SPOT_TOKEN_ID = 0;
 
 // ---------------------------------------------------------------------------

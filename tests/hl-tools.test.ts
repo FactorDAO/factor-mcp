@@ -69,18 +69,59 @@ const mockGetPositions = vi.fn(async () => [
     },
   },
 ]);
+const mockOpenPositionOffChain = vi.fn(async (_args: unknown) => ({
+  status: 'ok',
+  response: { type: 'order', data: { statuses: [{ filled: { totalSz: '0.001', avgPx: '2300' } }] } },
+} as unknown));
+const mockClosePositionOffChain = vi.fn(async (_args: unknown) => ({
+  status: 'ok',
+  response: { type: 'order', data: { statuses: [{ filled: { totalSz: '0.001', avgPx: '2300' } }] } },
+} as unknown));
+const mockTransferToBuilderDex = vi.fn((_args: unknown) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xbeefdead' as `0x${string}`,
+  value: 0n,
+}));
+const mockTransferFromBuilderDex = vi.fn((_args: unknown) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xdeadcafe' as `0x${string}`,
+  value: 0n,
+}));
+const mockListPerps = vi.fn(async (_dex?: string) => [
+  {
+    index: 0,
+    name: 'xyz:GOLD',
+    szDecimals: 4,
+    maxLeverage: 5,
+    onlyIsolated: false,
+    markPx: 2310.5,
+  },
+  {
+    index: 1,
+    name: 'xyz:BRENTOIL',
+    szDecimals: 2,
+    maxLeverage: 3,
+    onlyIsolated: true,
+    markPx: 88.12,
+  },
+]);
 
 vi.mock('../src/tools/hl/hl-vault-factory.js', () => {
   return {
     buildHlVault: vi.fn(() => ({
       openPosition: mockOpenPosition,
       closePosition: mockClosePosition,
+      openPositionOffChain: mockOpenPositionOffChain,
+      closePositionOffChain: mockClosePositionOffChain,
       setLeverage: mockSetLeverage,
       addIsolatedMargin: mockAddIsolatedMargin,
       depositToPerp: mockDepositToPerp,
       withdrawToEvm: mockWithdrawToEvm,
       getNav: mockGetNav,
       getPositions: mockGetPositions,
+      transferToBuilderDex: mockTransferToBuilderDex,
+      transferFromBuilderDex: mockTransferFromBuilderDex,
+      listPerps: mockListPerps,
     })),
   };
 });
@@ -125,6 +166,15 @@ import { hlWithdrawToEvmTool, hlWithdrawToEvmSchema } from '../src/tools/hl/hl-w
 import { hlGetNavTool, hlGetNavSchema } from '../src/tools/hl/hl-get-nav.js';
 import { hlGetPositionsTool, hlGetPositionsSchema } from '../src/tools/hl/hl-get-positions.js';
 import { hlSetSlippageCapTool } from '../src/tools/hl/hl-set-slippage-cap.js';
+import {
+  hlTransferToBuilderDexTool,
+  hlTransferToBuilderDexSchema,
+} from '../src/tools/hl/hl-transfer-to-builder-dex.js';
+import {
+  hlTransferFromBuilderDexTool,
+  hlTransferFromBuilderDexSchema,
+} from '../src/tools/hl/hl-transfer-from-builder-dex.js';
+import { hlListPerpsTool, hlListPerpsSchema } from '../src/tools/hl/hl-list-perps.js';
 import { HL_MAX_SLIPPAGE_BPS, HYPEREVM_CHAIN_ID } from '../src/tools/hl/common.js';
 import { configManager } from '../src/config/index.js';
 
@@ -141,12 +191,17 @@ beforeEach(() => {
   // verify the exact invocation in isolation.
   mockOpenPosition.mockClear();
   mockClosePosition.mockClear();
+  mockOpenPositionOffChain.mockClear();
+  mockClosePositionOffChain.mockClear();
   mockSetLeverage.mockClear();
   mockAddIsolatedMargin.mockClear();
   mockDepositToPerp.mockClear();
   mockWithdrawToEvm.mockClear();
   mockGetNav.mockClear();
   mockGetPositions.mockClear();
+  mockTransferToBuilderDex.mockClear();
+  mockTransferFromBuilderDex.mockClear();
+  mockListPerps.mockClear();
 });
 
 const VALID_VAULT = '0x1234567890AbcdEF1234567890aBcdef12345678';
@@ -163,6 +218,9 @@ const allTools = [
   hlGetNavTool,
   hlGetPositionsTool,
   hlSetSlippageCapTool,
+  hlTransferToBuilderDexTool,
+  hlTransferFromBuilderDexTool,
+  hlListPerpsTool,
 ];
 
 describe('HL tools — JSON Schema (MCP inputSchema)', () => {
@@ -189,8 +247,8 @@ describe('HL tools — JSON Schema (MCP inputSchema)', () => {
     });
   }
 
-  it('exactly 10 HL tools registered', () => {
-    expect(allTools.length).toBe(10);
+  it('exactly 13 HL tools registered', () => {
+    expect(allTools.length).toBe(13);
   });
 
   it('every tool name starts with factor_hl_', () => {
@@ -335,6 +393,53 @@ describe('hl_get_positions — zod schema', () => {
   });
 });
 
+describe('hl_transfer_to_builder_dex — zod schema', () => {
+  it('accepts string usdcAmount', () => {
+    expect(() =>
+      hlTransferToBuilderDexSchema.parse({ vault: VALID_VAULT, dex: 'xyz', usdcAmount: '1.50' }),
+    ).not.toThrow();
+  });
+  it('accepts numeric usdcAmount', () => {
+    expect(() =>
+      hlTransferToBuilderDexSchema.parse({ vault: VALID_VAULT, dex: 'xyz', usdcAmount: 1.5 }),
+    ).not.toThrow();
+  });
+  it('rejects unknown dex', () => {
+    expect(() =>
+      hlTransferToBuilderDexSchema.parse({ vault: VALID_VAULT, dex: 'foo', usdcAmount: '1' }),
+    ).toThrow();
+  });
+  it('rejects empty usdcAmount string', () => {
+    expect(() =>
+      hlTransferToBuilderDexSchema.parse({ vault: VALID_VAULT, dex: 'xyz', usdcAmount: '' }),
+    ).toThrow();
+  });
+});
+
+describe('hl_transfer_from_builder_dex — zod schema', () => {
+  it('accepts valid input', () => {
+    expect(() =>
+      hlTransferFromBuilderDexSchema.parse({ vault: VALID_VAULT, dex: 'xyz', usdcAmount: '5.0' }),
+    ).not.toThrow();
+  });
+  it('rejects unknown dex', () => {
+    expect(() =>
+      hlTransferFromBuilderDexSchema.parse({ vault: VALID_VAULT, dex: 'abc', usdcAmount: '5' }),
+    ).toThrow();
+  });
+});
+
+describe('hl_list_perps — zod schema', () => {
+  it('accepts no params (defaults to main)', () => {
+    expect(() => hlListPerpsSchema.parse({})).not.toThrow();
+  });
+  it('accepts an arbitrary dex name', () => {
+    expect(() => hlListPerpsSchema.parse({ dex: 'xyz' })).not.toThrow();
+    expect(() => hlListPerpsSchema.parse({ dex: 'main' })).not.toThrow();
+    expect(() => hlListPerpsSchema.parse({ dex: 'someNewDex' })).not.toThrow();
+  });
+});
+
 describe('hl_set_slippage_cap — view tool', () => {
   it('returns the adapter MAX_SLIPPAGE_BPS', async () => {
     const r = await hlSetSlippageCapTool.handler({} as never);
@@ -386,6 +491,19 @@ describe('chain id gating — HL tools reject non-HyperEVM', () => {
   });
   it('hl_get_positions throws on chain 42161', async () => {
     await expect(hlGetPositionsTool.handler({ vault: VALID_VAULT })).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_transfer_to_builder_dex throws on chain 42161', async () => {
+    await expect(
+      hlTransferToBuilderDexTool.handler({ vault: VALID_VAULT, dex: 'xyz', usdcAmount: '1' }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_transfer_from_builder_dex throws on chain 42161', async () => {
+    await expect(
+      hlTransferFromBuilderDexTool.handler({ vault: VALID_VAULT, dex: 'xyz', usdcAmount: '1' }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_list_perps throws on chain 42161', async () => {
+    await expect(hlListPerpsTool.handler({})).rejects.toThrow(/HyperEVM/);
   });
 });
 
@@ -544,6 +662,120 @@ describe('HL tools invoke HLVault with the right method + args', () => {
     expect(r.maxSlippageBps).toBe(HL_MAX_SLIPPAGE_BPS);
     expect(typeof r.maxSlippageBps).toBe('number');
     expect(r.maxSlippageBps).toBeGreaterThan(0);
+  });
+
+  it('hl_transfer_to_builder_dex calls HLVault.transferToBuilderDex(dex, usdcAmount)', async () => {
+    const r = (await hlTransferToBuilderDexTool.handler({
+      vault: VALID_VAULT,
+      dex: 'xyz',
+      usdcAmount: '1.50',
+    })) as { transaction?: { to?: string; data?: string } };
+    expect(mockTransferToBuilderDex).toHaveBeenCalledTimes(1);
+    expect(mockTransferToBuilderDex).toHaveBeenCalledWith({ dex: 'xyz', usdcAmount: '1.50' });
+    expect(r.transaction?.to).toBeDefined();
+    expect(r.transaction?.data).toBeDefined();
+  });
+
+  it('hl_transfer_to_builder_dex coerces numeric usdcAmount to a decimal string', async () => {
+    await hlTransferToBuilderDexTool.handler({
+      vault: VALID_VAULT,
+      dex: 'xyz',
+      usdcAmount: 2.5,
+    });
+    const args = mockTransferToBuilderDex.mock.calls[0]?.[0] as { usdcAmount: string };
+    expect(typeof args.usdcAmount).toBe('string');
+    expect(args.usdcAmount).toBe('2.5');
+  });
+
+  it('hl_transfer_from_builder_dex calls HLVault.transferFromBuilderDex(dex, usdcAmount)', async () => {
+    const r = (await hlTransferFromBuilderDexTool.handler({
+      vault: VALID_VAULT,
+      dex: 'xyz',
+      usdcAmount: '3.14',
+    })) as { transaction?: { to?: string; data?: string } };
+    expect(mockTransferFromBuilderDex).toHaveBeenCalledTimes(1);
+    expect(mockTransferFromBuilderDex).toHaveBeenCalledWith({ dex: 'xyz', usdcAmount: '3.14' });
+    expect(r.transaction?.data).toBeDefined();
+  });
+
+  it('hl_list_perps calls HLVault.listPerps with the dex argument (default "main")', async () => {
+    const r = await hlListPerpsTool.handler({});
+    expect(mockListPerps).toHaveBeenCalledTimes(1);
+    expect(mockListPerps).toHaveBeenCalledWith('main');
+    expect(r.dex).toBe('main');
+    expect(r.count).toBe(2);
+    expect(r.perps[0].name).toBe('xyz:GOLD');
+    expect(r.perps[0].markPx).toBe(2310.5);
+    expect(r.perps[1].onlyIsolated).toBe(true);
+  });
+
+  it('hl_list_perps forwards a custom dex name', async () => {
+    await hlListPerpsTool.handler({ dex: 'xyz' });
+    expect(mockListPerps).toHaveBeenCalledWith('xyz');
+  });
+
+  it('hl_open_position routes BTC (main dex) to HLVault.openPosition', async () => {
+    await hlOpenPositionTool.handler({
+      vault: VALID_VAULT,
+      perp: 'BTC',
+      side: 'long',
+      sizeUsd: 100,
+    });
+    expect(mockOpenPosition).toHaveBeenCalledTimes(1);
+    expect(mockOpenPositionOffChain).not.toHaveBeenCalled();
+  });
+
+  it('hl_open_position routes xyz:GOLD (builder dex) to HLVault.openPositionOffChain', async () => {
+    const r = await hlOpenPositionTool.handler({
+      vault: VALID_VAULT,
+      perp: 'xyz:GOLD',
+      side: 'long',
+      sizeUsd: 100,
+    });
+    expect(mockOpenPositionOffChain).toHaveBeenCalledTimes(1);
+    expect(mockOpenPositionOffChain).toHaveBeenCalledWith({
+      perp: 'xyz:GOLD',
+      isLong: true,
+      sizeUsd: 100,
+      slippageBps: 1000,
+    });
+    expect(mockOpenPosition).not.toHaveBeenCalled();
+    const offChainResult = r as {
+      submitted?: boolean;
+      asset?: string;
+      hlResponse?: Record<string, unknown>;
+    };
+    expect(offChainResult.submitted).toBe(true);
+    expect(offChainResult.asset).toBe('xyz:GOLD');
+    expect(offChainResult.hlResponse).toBeDefined();
+  });
+
+  it('hl_close_position routes ETH (main dex) to HLVault.closePosition', async () => {
+    await hlClosePositionTool.handler({
+      vault: VALID_VAULT,
+      perp: 'ETH',
+      sizeUsd: 50,
+    });
+    expect(mockClosePosition).toHaveBeenCalledTimes(1);
+    expect(mockClosePositionOffChain).not.toHaveBeenCalled();
+  });
+
+  it('hl_close_position routes xyz:BRENTOIL (builder dex) to HLVault.closePositionOffChain', async () => {
+    const r = await hlClosePositionTool.handler({
+      vault: VALID_VAULT,
+      perp: 'xyz:BRENTOIL',
+      sizeUsd: 25,
+    });
+    expect(mockClosePositionOffChain).toHaveBeenCalledTimes(1);
+    expect(mockClosePositionOffChain).toHaveBeenCalledWith({
+      perp: 'xyz:BRENTOIL',
+      sizeUsd: 25,
+      slippageBps: 1000,
+    });
+    expect(mockClosePosition).not.toHaveBeenCalled();
+    const offChainResult = r as { submitted?: boolean; asset?: string };
+    expect(offChainResult.submitted).toBe(true);
+    expect(offChainResult.asset).toBe('xyz:BRENTOIL');
   });
 
   it('hl_add_api_wallet builds an on-chain executeByManager tx envelope', async () => {

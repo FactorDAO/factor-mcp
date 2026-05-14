@@ -18,6 +18,7 @@
 
 import type { Address, Hex, LocalAccount } from 'viem';
 import { hashTypedData, keccak256, toBytes } from 'viem';
+import { encode as msgpackEncode } from '@msgpack/msgpack';
 
 import type { HlExchangeResponse, SignedHlAction } from './types.js';
 
@@ -62,9 +63,52 @@ export interface UpdateIsolatedMarginAction {
   ntli: number;
 }
 
+/// @notice Place an order on any HL perp dex (main = asset 0-65535,
+///         builder dex `xyz` = asset 100000+). HL routes by the global
+///         asset index. Required for HIP-3 builder-dex trading because
+///         CoreWriter action 1 has been empirically shown NOT to handle
+///         builder-dex routing (consumes all gas and reverts on
+///         asset≥100000 as of mainnet 2026-05-14).
+///
+/// HL's canonical msgpack key order for `order`:
+///   { type, orders: [{ a, b, p, s, r, t }], grouping, builder? }
+/// where:
+///   a = asset (uint32, global)
+///   b = isBuy (bool)
+///   p = limit price as string (real USD, NOT 1e8-wire) — HL uses string
+///       to preserve exact decimal representation
+///   s = size as string (real units, NOT 1e8-wire)
+///   r = reduceOnly
+///   t = TIF object: {limit: {tif: 'Ioc'|'Alo'|'Gtc'}} OR
+///                   {trigger: {triggerPx, isMarket, tpsl}}
+///   grouping: "na" for plain orders
+export interface OrderAction {
+  type: 'order';
+  orders: Array<{
+    a: number;
+    b: boolean;
+    p: string;
+    s: string;
+    r: boolean;
+    t: { limit: { tif: 'Ioc' | 'Alo' | 'Gtc' } };
+    c?: string; // optional client order id (hex)
+  }>;
+  grouping: 'na' | 'normalTpsl' | 'positionTpsl';
+}
+
+/// @notice Cancel by cloid (off-chain). The on-chain counterpart is
+/// CoreWriter action 11 — exposed for the builder-dex case where on-chain
+/// cancel also fails. Cancels via oid use `cancel` action with `o`.
+export interface CancelByCloidAction {
+  type: 'cancelByCloid';
+  cancels: Array<{ asset: number; cloid: string }>;
+}
+
 export type HlExchangeAction =
   | UpdateLeverageAction
-  | UpdateIsolatedMarginAction;
+  | UpdateIsolatedMarginAction
+  | OrderAction
+  | CancelByCloidAction;
 
 // ---------------------------------------------------------------------------
 // EIP-712 helpers
@@ -86,23 +130,42 @@ const AGENT_TYPES = {
   ],
 } as const;
 
-/// @notice Stable JSON encoding (HL hashes a deterministic
-/// canonical-JSON of `[action, nonce, vaultAddress]`). HL uses MessagePack
-/// in the production wire format, but a sorted-key JSON over the same
-/// payload reaches an identical 32-byte digest when the agent + backend
-/// share this convention. For the two no-arg-shape actions used here
-/// (`updateLeverage`, `updateIsolatedMargin`) the key order is already
-/// canonical, so a plain `JSON.stringify` is sufficient.
+/// @notice HL's canonical action hash. Verified against the reference
+/// Python SDK (`hyperliquid-python-sdk/hyperliquid/utils/signing.py`):
+///
+///   data = msgpack(action) || nonce_u64_be || (b"\x00" if no vault
+///                                                else b"\x01" || vault_addr_20)
+///   connection_id = keccak256(data)
+///
+/// We tried sorted-JSON first — HL recovered a wrong agent address
+/// because the msgpack digest is different. Don't substitute msgpack
+/// with anything else here.
 function connectionId(
   action: HlExchangeAction,
   nonce: number,
   vaultAddress?: Address,
 ): Hex {
-  const payload = JSON.stringify([action, nonce, vaultAddress ?? null]);
-  // Hash the UTF-8 bytes of the canonical JSON with keccak. (HL's
-  // production wire format uses MessagePack; sorted-key JSON over the
-  // simple action shapes used here reaches the same digest.)
-  return keccak256(toBytes(payload));
+  const actionBytes = msgpackEncode(action, { sortKeys: false });
+  const nonceBytes = new Uint8Array(8);
+  // Big-endian u64 nonce — HL uses millisecond timestamps so fits in 53 bits.
+  const view = new DataView(nonceBytes.buffer);
+  view.setBigUint64(0, BigInt(nonce), false /* big-endian */);
+  let vaultBytes: Uint8Array;
+  if (vaultAddress) {
+    const addrHex = vaultAddress.replace(/^0x/, '').toLowerCase();
+    vaultBytes = new Uint8Array(21);
+    vaultBytes[0] = 0x01;
+    for (let i = 0; i < 20; i++) {
+      vaultBytes[1 + i] = parseInt(addrHex.slice(i * 2, i * 2 + 2), 16);
+    }
+  } else {
+    vaultBytes = new Uint8Array([0x00]);
+  }
+  const data = new Uint8Array(actionBytes.length + 8 + vaultBytes.length);
+  data.set(actionBytes, 0);
+  data.set(nonceBytes, actionBytes.length);
+  data.set(vaultBytes, actionBytes.length + 8);
+  return keccak256(data);
 }
 
 async function signAction(
@@ -157,8 +220,11 @@ export class HLExchangeClient {
   private readonly agent: LocalAccount;
   private readonly vaultAddress: Address;
   private readonly isTestnet: boolean;
-  private readonly endpointUrl: string;
-  private readonly fetchImpl: typeof fetch;
+  // Public so HLVault can reach the matching /info endpoint + fetch impl
+  // without re-instantiating its own. Replacing the URL on a live client
+  // is not supported (treat as readonly even though the type permits it).
+  public readonly endpointUrl: string;
+  public readonly fetchImpl: typeof fetch;
 
   constructor(opts: HLExchangeClientOptions) {
     this.agent = opts.agent;
@@ -220,24 +286,80 @@ export class HLExchangeClient {
     return this.send(action);
   }
 
+  /// @notice Place a single order via the HL Exchange API. Used for HIP-3
+  /// builder-dex perps (asset≥100000) where CoreWriter does not yet route
+  /// correctly. The agent EOA's signature authenticates the action; HL
+  /// applies it against the master account (= this vault, via the
+  /// agent→master mapping established by `addApiWallet`).
+  ///
+  /// @param asset Global asset index. Main dex: 0..N. xyz dex: 100000+.
+  /// @param isBuy true = long open / short close. false = short open / long close.
+  /// @param limitPxReal Limit price in REAL USD (NOT 1e8-wire). HL's
+  ///        exchange API uses string for exact decimal — pass e.g. "5406"
+  ///        for $5406.
+  /// @param sizeReal Size in REAL units (NOT 1e8-wire). E.g. "0.0023" GOLD.
+  /// @param reduceOnly true to make the order reduce-only.
+  /// @param tif "Ioc" | "Alo" | "Gtc".
+  public async placeOrder(args: {
+    asset: number;
+    isBuy: boolean;
+    limitPxReal: string;
+    sizeReal: string;
+    reduceOnly: boolean;
+    tif: 'Ioc' | 'Alo' | 'Gtc';
+    cloid?: string;
+  }): Promise<HlExchangeResponse> {
+    const order: OrderAction['orders'][number] = {
+      a: args.asset,
+      b: args.isBuy,
+      p: args.limitPxReal,
+      s: args.sizeReal,
+      r: args.reduceOnly,
+      t: { limit: { tif: args.tif } },
+    };
+    if (args.cloid) order.c = args.cloid;
+    const action: OrderAction = {
+      type: 'order',
+      orders: [order],
+      grouping: 'na',
+    };
+    return this.send(action);
+  }
+
+  /// @notice Cancel by client order id (off-chain).
+  public async cancelByCloid(asset: number, cloid: string): Promise<HlExchangeResponse> {
+    const action: CancelByCloidAction = {
+      type: 'cancelByCloid',
+      cancels: [{ asset, cloid }],
+    };
+    return this.send(action);
+  }
+
   /// @notice Lower-level: sign and POST any HL action. Public so callers
   /// (incl. tests) can craft custom actions if HL adds new ones.
   public async send(
     action: HlExchangeAction,
     nonce: number = Date.now(),
   ): Promise<HlExchangeResponse> {
+    // CRITICAL: do NOT pass vaultAddress in the connectionId hash OR in the
+    // wire envelope. HL reserves `vaultAddress` for its MANAGED share-vault
+    // product (where the master IS a registered HL-vault entity). Our pattern
+    // is agent → master mapping via `addApiWallet` — HL applies the signed
+    // action to the master account (our vault contract) automatically via
+    // the agent→master link. Passing vaultAddress triggers HL's vault-lookup
+    // path and fails with "Vault not registered" because our contract is a
+    // regular HL user, not a HL-vault.
     const signature = await signAction(
       this.agent,
       action,
       nonce,
-      this.vaultAddress,
+      undefined,
       this.isTestnet,
     );
     const envelope: SignedHlAction<HlExchangeAction> = {
       action,
       signature,
       nonce,
-      vaultAddress: this.vaultAddress,
     };
     const res = await this.fetchImpl(this.endpointUrl, {
       method: 'POST',

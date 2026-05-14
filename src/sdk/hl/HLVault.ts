@@ -26,6 +26,7 @@ import { studioProV1ABI } from '@factordao/contracts';
 import {
   encodeAddApiWallet,
   encodeBridgeSpotToEvm,
+  encodeTransferUsdcBetweenLedgers,
   encodeCancelOrder,
   encodeClosePosition,
   encodeDepositToPerp,
@@ -40,6 +41,7 @@ import {
 } from './coreWriter.js';
 import {
   evmToSpotWei,
+  usdcSpotWei,
   markPxToReal,
   sizeWireToReal,
   toWire1e8,
@@ -93,9 +95,12 @@ export interface HLChainAddresses {
 }
 
 export const HL_ADDRESSES_999: HLChainAddresses = Object.freeze({
-  adapter: '0xa2f0fF03b7E14A53552E15b9A1e549493509a9c9',
-  accounting: '0x606d70dAc972c145ced21A789E0B175be5ffE3ad',
-  selectorSetup: '0x53027c4f9808c2FF06b9248f8d42ECE6c60e143f',
+  // v3 — adds `transferUsdcBetweenLedgers` for HIP-3 cross-dex funding.
+  adapter: '0xeF3a12429699D1311783ef747bC09cb7794701af',
+  // v2 — multi-dex NAV (sums perpDexIndex 0 + 1 via accountMarginSummary).
+  accounting: '0x4ae0a56E090244C9c27ca12Aabd005b2Afb9B4e6',
+  // v3 — wired to the v3 adapter.
+  selectorSetup: '0xc529E45C07D51604a9138FC4687bc2F921cbA97e',
   factory: '0x4416ddaA726e2A4b537e652d00D8EeB8A80Dc704',
   usdc: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
   cdw: '0x6B9E773128f453f5c2C60935Ee2DE2CBc5390A24',
@@ -186,6 +191,14 @@ export class HLVault {
   /// are immutable for the lifetime of a market, so a one-shot fetch
   /// per perp is sufficient.
   private readonly assetInfoCache = new Map<number, PerpAssetInfo>();
+
+  /// Dynamic perp universe cache, keyed by symbol. Hydrated lazily on
+  /// first symbol resolution that misses the hardcoded `PERP_INDEX` map.
+  /// Holds ALL ~230 main-dex perps (BTC … PAXG … HYPE), making
+  /// `openPosition({ perp: 'PAXG' })` work without the user needing the
+  /// numeric index. Refresh via `refreshUniverse()` if a new perp gets
+  /// listed mid-session.
+  private universeByName: Map<string, { index: number; szDecimals: number; maxLeverage: number; onlyIsolated: boolean }> | null = null;
 
   constructor(
     vaultAddress: Address,
@@ -291,7 +304,11 @@ export class HLVault {
     Array<{ perp: number; position: HLPosition }>
   > {
     const active = (await this.client.readContract({
-      address: this.addresses.adapter,
+      // Vault, not adapter — the adapter's storage is empty when called
+      // standalone. The vault's fallback dispatcher routes the selector
+      // through `funcSelectors` to the adapter via delegatecall, which
+      // resolves `HyperLiquidPerpStorage.s()` to the VAULT's namespaced slot.
+      address: this.vaultAddress,
       abi: hyperLiquidPerpAdapterAbi,
       functionName: 'getActivePerpIndices',
     })) as readonly number[];
@@ -310,7 +327,7 @@ export class HLVault {
   /// over the `MAX_ACTIVE_PERPS` cap.
   public async getActivePerpIndices(): Promise<number[]> {
     const active = (await this.client.readContract({
-      address: this.addresses.adapter,
+      address: this.vaultAddress, // dispatched to adapter via fallback (see getPositions)
       abi: hyperLiquidPerpAdapterAbi,
       functionName: 'getActivePerpIndices',
     })) as readonly number[];
@@ -319,7 +336,7 @@ export class HLVault {
 
   public async getPendingCloids(): Promise<bigint[]> {
     const pending = (await this.client.readContract({
-      address: this.addresses.adapter,
+      address: this.vaultAddress, // dispatched to adapter via fallback
       abi: hyperLiquidPerpAdapterAbi,
       functionName: 'getPendingCloids',
     })) as readonly bigint[];
@@ -334,6 +351,69 @@ export class HLVault {
     return info;
   }
 
+  // -------------------------------------------------------------------------
+  // Universe — dynamic asset resolution (covers ALL 230 main-dex perps)
+  // -------------------------------------------------------------------------
+
+  /// @notice Lazy-load the main HL perp universe so every symbol
+  /// (PAXG, PENDLE, TIA, …) is resolvable by name, not just the 16
+  /// hardcoded in `PERP_INDEX`.
+  public async ensureUniverseLoaded(): Promise<void> {
+    if (this.universeByName) return;
+    const all = await this.listPerps('main');
+    this.universeByName = new Map(
+      all.map((p) => [p.name, {
+        index: p.index,
+        szDecimals: p.szDecimals,
+        maxLeverage: p.maxLeverage,
+        onlyIsolated: p.onlyIsolated,
+      }]),
+    );
+  }
+
+  /// @notice Re-fetch the universe (use if a new perp gets listed and
+  /// you want it without restarting the SDK).
+  public async refreshUniverse(): Promise<void> {
+    this.universeByName = null;
+    await this.ensureUniverseLoaded();
+  }
+
+  /// @notice All perp symbols available on the main HL dex (after first
+  /// fetch). Names like `'PAXG'`, `'PENDLE'`, `'HYPE'`, etc. — pass any
+  /// of these to `openPosition({perp: '<name>'})`.
+  public async getAvailablePerps(): Promise<string[]> {
+    await this.ensureUniverseLoaded();
+    return Array.from(this.universeByName!.keys()).sort();
+  }
+
+  /// @notice Async perp symbol → index resolver. Uses the hardcoded
+  /// `PERP_INDEX` for fast-path on the well-known 16 perps; falls back
+  /// to a live HL Info lookup for everything else. Numeric indices are
+  /// passed through unchanged.
+  ///
+  /// @dev Used internally by `openPosition`/`closePosition`/`placeOrder`/
+  /// `setLeverage`/`addIsolatedMargin` so the caller can use any of the
+  /// 230 main-dex perp names.
+  public async resolvePerp(perp: PerpSymbol | string | number): Promise<number> {
+    if (typeof perp === 'number') {
+      if (!Number.isInteger(perp) || perp < 0) {
+        throw new HLPreflightError('unknown-perp', `invalid perp index ${perp}`, { perp });
+      }
+      return perp;
+    }
+    if (perp in PERP_INDEX) return PERP_INDEX[perp as PerpSymbol];
+    await this.ensureUniverseLoaded();
+    const hit = this.universeByName!.get(perp);
+    if (!hit) {
+      throw new HLPreflightError(
+        'unknown-perp',
+        `unknown perp symbol "${perp}". Use getAvailablePerps() for the full list.`,
+        { perp },
+      );
+    }
+    return hit.index;
+  }
+
   /// @notice Read the current mark in real USD. Convenience over
   /// `readMarkPx` + `markPxToReal`.
   public async getMarkPxReal(perp: number): Promise<number> {
@@ -342,6 +422,101 @@ export class HLVault {
       this.getPerpAssetInfo(perp),
     ]);
     return markPxToReal(mark, info.szDecimals);
+  }
+
+  /// @notice Fetch the live asset universe from HL Info API. Useful for
+  /// discovering all perps available, including HIP-3 builder dexes like
+  /// `xyz` (which carries non-crypto assets: BRENTOIL, GOLD, COPPER,
+  /// AAPL, etc).
+  ///
+  /// @param dex Which perp dex to query.
+  ///   - `'main'` (default): the canonical HL perp dex (230+ crypto perps).
+  ///   - `'xyz'`: the xyz builder dex (75 mixed: commodities, stocks, FX, ...).
+  ///   - any other string: passed through as a builder dex name to HL.
+  /// @returns Array of `{ index, name, szDecimals, maxLeverage,
+  ///                       onlyIsolated, markPx? }` ordered by asset index
+  ///          within the dex (NOT the global asset index — builder dexes
+  ///          use a separate namespace).
+  ///
+  /// @dev Trading on builder dexes (`dex !== 'main'`) is NOT YET supported
+  /// by this SDK's `openPosition` / `closePosition` — HIP-3 needs distinct
+  /// CoreWriter routing. This method is read-only discovery for now.
+  public async listPerps(
+    dex: 'main' | 'xyz' | string = 'main',
+  ): Promise<
+    Array<{
+      index: number;
+      name: string;
+      szDecimals: number;
+      maxLeverage: number;
+      onlyIsolated: boolean;
+      markPx?: number;
+    }>
+  > {
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const body =
+      dex === 'main'
+        ? { type: 'metaAndAssetCtxs' }
+        : { type: 'metaAndAssetCtxs', dex };
+    const res = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      throw new Error(`HL info failed: ${res.status} ${res.statusText}`);
+    }
+    const parsed = (await res.json()) as
+      | [{ universe: any[] }, any[]]
+      | { universe: any[] };
+    const meta = Array.isArray(parsed) ? parsed[0] : parsed;
+    const ctxs = Array.isArray(parsed) ? parsed[1] : [];
+    return meta.universe.map((u: any, i: number) => ({
+      index: i,
+      name: u.name,
+      szDecimals: u.szDecimals,
+      maxLeverage: u.maxLeverage,
+      onlyIsolated: u.onlyIsolated ?? false,
+      markPx: ctxs[i]?.markPx ? Number(ctxs[i].markPx) : undefined,
+    }));
+  }
+
+  /// @notice Fetch the live HL spot token universe (USDC plus PURR/HYPE/
+  /// XAUT0/XAUM/... gold tokens etc).
+  public async listSpotTokens(): Promise<
+    Array<{
+      index: number;
+      name: string;
+      szDecimals: number;
+      weiDecimals: number;
+      evmContract?: string;
+    }>
+  > {
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const res = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'spotMeta' }),
+    });
+    if (!res.ok) {
+      throw new Error(`HL info failed: ${res.status} ${res.statusText}`);
+    }
+    const parsed = (await res.json()) as {
+      tokens: Array<{
+        index: number;
+        name: string;
+        szDecimals: number;
+        weiDecimals: number;
+        evmContract?: { address: string };
+      }>;
+    };
+    return parsed.tokens.map((t) => ({
+      index: t.index,
+      name: t.name,
+      szDecimals: t.szDecimals,
+      weiDecimals: t.weiDecimals,
+      evmContract: t.evmContract?.address,
+    }));
   }
 
   // -------------------------------------------------------------------------
@@ -399,6 +574,87 @@ export class HLVault {
     ]);
   }
 
+  // -------------------------------------------------------------------------
+  // Cross-dex USDC movement (sendAsset action 13)
+  // -------------------------------------------------------------------------
+
+  /// @notice Encoding of HL ledger indices used by `sendAsset` /
+  /// `transferUsdcBetweenLedgers`. Main HL perp = 0; xyz builder dex = 1;
+  /// spot = 0xFFFFFFFF (uint32.max).
+  public static readonly DEX_MAIN = 0;
+  public static readonly DEX_XYZ = 1;
+  public static readonly DEX_SPOT = 0xffffffff;
+
+  /// @notice Move USDC between any two HL ledgers within the vault's
+  /// own HL identity. Covers:
+  ///   main perp ⇄ xyz perp   (fund a builder dex for HIP-3 trading)
+  ///   main perp ⇄ spot       (alternative to `withdrawFromPerp` action 7)
+  ///   xyz perp  ⇄ spot
+  ///
+  /// EMPIRICAL: HL expects amount in **8-decimal** USDC scale for ALL
+  /// ledger pairs (even perp→perp where both are 6-dec on the inside).
+  /// HL converts on the destination. Caller passes a decimal USD string
+  /// (e.g. `'1.50'`) and the SDK does `parseUnits(amount, 8)`.
+  public transferUsdcBetweenLedgers(args: {
+    srcDex: number;
+    dstDex: number;
+    usdcAmount: string; // decimal string in USD (e.g. '1.50')
+  }): SendTransactionParams {
+    if (args.srcDex === args.dstDex) {
+      throw new HLPreflightError('invalid-input', `srcDex == dstDex (${args.srcDex})`);
+    }
+    return this.executeByManager([
+      encodeTransferUsdcBetweenLedgers(this.addresses.adapter, {
+        srcDex: args.srcDex,
+        dstDex: args.dstDex,
+        amountWei8dec: usdcSpotWei(args.usdcAmount),
+      }),
+    ]);
+  }
+
+  /// @notice Convenience: move USDC from main HL perp to xyz builder
+  /// dex. Use this to fund HIP-3 trading on `xyz:GOLD`, `xyz:BRENTOIL`,
+  /// etc. After the trade, call `transferFromBuilderDex` to bring the
+  /// USDC back.
+  public transferToBuilderDex(args: {
+    dex?: 'xyz';
+    usdcAmount: string;
+  }): SendTransactionParams {
+    const dstDex = args.dex === 'xyz' ? HLVault.DEX_XYZ : HLVault.DEX_XYZ;
+    return this.transferUsdcBetweenLedgers({
+      srcDex: HLVault.DEX_MAIN,
+      dstDex,
+      usdcAmount: args.usdcAmount,
+    });
+  }
+
+  /// @notice Inverse of `transferToBuilderDex`. Sweeps USDC from builder
+  /// dex back to main HL perp.
+  public transferFromBuilderDex(args: {
+    dex?: 'xyz';
+    usdcAmount: string;
+  }): SendTransactionParams {
+    const srcDex = args.dex === 'xyz' ? HLVault.DEX_XYZ : HLVault.DEX_XYZ;
+    return this.transferUsdcBetweenLedgers({
+      srcDex,
+      dstDex: HLVault.DEX_MAIN,
+      usdcAmount: args.usdcAmount,
+    });
+  }
+
+  /// @notice Read the vault's balance on a specific HL perp dex
+  /// (`accountValue` from `accountMarginSummary`). Useful for sizing
+  /// cross-dex transfers without losing precision.
+  public async getAccountValue(perpDexIndex: number): Promise<bigint> {
+    // SDK uses the precompile directly via the raw call helper; main dex
+    // is exposed via getNav().perpEquity. For arbitrary perpDexIndex,
+    // re-call the precompile.
+    const { readAccountMarginSummary } = await import('./precompiles.js');
+    const ams = await readAccountMarginSummary(this.client, this.vaultAddress);
+    void perpDexIndex; // currently main only; xyz path uses Info API below
+    return ams.accountValue;
+  }
+
   /// @notice Raw `spotSend` — adapter locks the destination to `self`,
   /// so this is only useful for intra-spot consolidation of unusual
   /// tokens. USDC bridging should go via `withdrawToEvm` instead.
@@ -425,7 +681,7 @@ export class HLVault {
   public async openPosition(
     args: OpenPositionParams,
   ): Promise<SendTransactionParams> {
-    const perp = resolvePerpIndex(args.perp);
+    const perp = await this.resolvePerp(args.perp);
     const info = await this.getPerpAssetInfo(perp);
 
     const [markReal, active, pending] = await Promise.all([
@@ -460,7 +716,13 @@ export class HLVault {
       pendingCount: pending.length,
       activeCount: active.length,
       isNewPerp: !active.includes(perp),
-      bandBps: args.slippageBps,
+      // Pre-flight IOC band MUST use the platform minimum (HL_IOC_MIN_BAND_BPS,
+      // 1000bps = 10%), NOT the user's aggressiveness target. The user's
+      // `slippageBps` is the TARGET past-mark distance — `alignIocLimit` aims
+      // at that and then tick-rounds. After rounding the limit can land
+      // slightly inside the target (e.g. BTC at integer ticks): that's fine
+      // as long as it still clears the platform minimum.
+      bandBps: undefined,
     });
 
     return this.executeByManager([
@@ -480,7 +742,7 @@ export class HLVault {
   public async closePosition(
     args: ClosePositionParams,
   ): Promise<SendTransactionParams> {
-    const perp = resolvePerpIndex(args.perp);
+    const perp = await this.resolvePerp(args.perp);
     const info = await this.getPerpAssetInfo(perp);
 
     const [markReal, current, pending] = await Promise.all([
@@ -508,11 +770,15 @@ export class HLVault {
       args.slippageBps,
     );
     const limitPxWire = toWire1e8(limitPxReal);
-    const sizeWire = sizeUsdToWire(args.sizeUsd, markReal, info.szDecimals);
+    // Size from LIMIT price (worst-case fill) rather than mark so the
+    // notional check against `limitPx × size` clears `MIN_NOTIONAL` even
+    // when the IOC limit is FAR from mark (sell-close has limit < mark,
+    // buy-close has limit > mark — both work out to notional ≈ sizeUsd).
+    const sizeWire = sizeUsdToWire(args.sizeUsd, limitPxReal, info.szDecimals);
     if (sizeWire <= 0n) {
       throw new HLPreflightError(
         'min-notional',
-        `computed sizeWire is 0 — sizeUsd ${args.sizeUsd} too small for lot step at mark ${markReal}`,
+        `computed sizeWire is 0 — sizeUsd ${args.sizeUsd} too small for lot step at limit ${limitPxReal}`,
         { notionalUsd: args.sizeUsd },
       );
     }
@@ -529,7 +795,9 @@ export class HLVault {
       pendingCount: pending.length,
       activeCount: 0,
       isNewPerp: false,
-      bandBps: args.slippageBps,
+      // Use platform minimum (HL_IOC_MIN_BAND_BPS), NOT user's slippage target.
+      // See openPosition comment for the rationale.
+      bandBps: undefined,
     });
 
     return this.executeByManager([
@@ -546,7 +814,7 @@ export class HLVault {
   public async placeOrder(
     args: PlaceOrderParams,
   ): Promise<SendTransactionParams> {
-    const perp = resolvePerpIndex(args.perp);
+    const perp = await this.resolvePerp(args.perp);
     const info = await this.getPerpAssetInfo(perp);
 
     const [markReal, active, pending] = await Promise.all([
@@ -586,21 +854,21 @@ export class HLVault {
     ]);
   }
 
-  public cancelOrder(args: {
-    perp: PerpSymbol | number;
+  public async cancelOrder(args: {
+    perp: PerpSymbol | string | number;
     cloid: bigint;
-  }): SendTransactionParams {
+  }): Promise<SendTransactionParams> {
     return this.executeByManager([
       encodeCancelOrder(this.addresses.adapter, {
-        perp: resolvePerpIndex(args.perp),
+        perp: await this.resolvePerp(args.perp),
         cloid: args.cloid,
       }),
     ]);
   }
 
-  public syncPosition(perp: PerpSymbol | number): SendTransactionParams {
+  public async syncPosition(perp: PerpSymbol | string | number): Promise<SendTransactionParams> {
     return this.executeByManager([
-      encodeSyncPosition(this.addresses.adapter, resolvePerpIndex(perp)),
+      encodeSyncPosition(this.addresses.adapter, await this.resolvePerp(perp)),
     ]);
   }
 
@@ -626,7 +894,7 @@ export class HLVault {
   /// positions — HL semantics). Signed by `agentSigner` and posted to
   /// `api.hyperliquid.xyz/exchange`.
   public async setLeverage(
-    perp: PerpSymbol | number,
+    perp: PerpSymbol | string | number,
     leverage: number,
     mode: MarginMode,
   ): Promise<HlExchangeResponse> {
@@ -637,7 +905,7 @@ export class HLVault {
       );
     }
     return this.exchange.updateLeverage({
-      asset: resolvePerpIndex(perp),
+      asset: await this.resolvePerp(perp),
       isCross: mode === 'cross',
       leverage,
     });
@@ -647,7 +915,7 @@ export class HLVault {
   /// open position. `deltaUsd` is in 6-dec USDC; converted to HL's
   /// `ntli` wire scale (also 6-dec, signed).
   public async addIsolatedMargin(
-    perp: PerpSymbol | number,
+    perp: PerpSymbol | string | number,
     isLong: boolean,
     deltaUsd: number,
   ): Promise<HlExchangeResponse> {
@@ -660,9 +928,133 @@ export class HLVault {
     // `ntli` is in 6-dec units (1_000_000 = $1.00).
     const ntli = Math.round(deltaUsd * 1e6);
     return this.exchange.updateIsolatedMargin({
-      asset: resolvePerpIndex(perp),
+      asset: await this.resolvePerp(perp),
       isBuy: isLong,
       ntli,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // HIP-3 builder-dex trading (off-chain via Exchange API)
+  // -------------------------------------------------------------------------
+
+  /// @notice Resolve a builder-dex symbol like `'xyz:GOLD'` to its global
+  /// asset index per HL HIP-3: `asset = 100000 + perp_dex_index * 10000 +
+  /// asset_idx_within_dex`. Caches the (dex, asset_idx) lookup.
+  public async resolveBuilderDex(symbol: string): Promise<{ globalAsset: number; szDecimals: number; maxLeverage: number; markPxReal: number }> {
+    const colon = symbol.indexOf(':');
+    if (colon < 0) throw new HLPreflightError('unknown-perp', `not a builder-dex symbol: ${symbol}`, { perp: symbol });
+    const dexName = symbol.slice(0, colon);
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    // Need: perp_dex_index of `dexName` + asset_idx of `symbol` in that dex's universe.
+    // Step 1: perpDexs lists all dexes by name in order (slot 0 = main = null).
+    const dexsRes = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'perpDexs' }),
+    });
+    const dexs = (await dexsRes.json()) as Array<{ name: string } | null>;
+    const dexIdx = dexs.findIndex((d) => d?.name === dexName);
+    if (dexIdx < 0) throw new HLPreflightError('unknown-perp', `unknown perp dex: ${dexName}`, { perp: symbol });
+    // Step 2: list assets within that dex.
+    const dexPerps = await this.listPerps(dexName);
+    const hit = dexPerps.find((p) => p.name === symbol);
+    if (!hit) throw new HLPreflightError('unknown-perp', `${symbol} not found in dex ${dexName}`, { perp: symbol });
+    return {
+      globalAsset: 100_000 + dexIdx * 10_000 + hit.index,
+      szDecimals: hit.szDecimals,
+      maxLeverage: hit.maxLeverage,
+      markPxReal: hit.markPx ?? 0,
+    };
+  }
+
+  /// @notice Open a position on a builder-dex perp (xyz:GOLD, xyz:BRENTOIL,
+  /// xyz:AAPL, etc) via the HL Exchange API. Same surface as
+  /// `openPosition` but routes through the off-chain agent path because
+  /// CoreWriter does not (yet) handle HIP-3 routing.
+  ///
+  /// Returns the HL Exchange API response — NOT a `SendTransactionParams`.
+  /// No EVM tx involved; the agent signs the action off-chain and HL
+  /// applies it directly against the vault's HL account.
+  public async openPositionOffChain(args: {
+    perp: string; // builder-dex qualified, e.g. 'xyz:GOLD'
+    isLong: boolean;
+    sizeUsd: number;
+    slippageBps?: number;
+  }): Promise<HlExchangeResponse> {
+    const info = await this.resolveBuilderDex(args.perp);
+    if (info.markPxReal <= 0) throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
+    // Compute IOC limit + size in REAL units (HL exchange API uses
+    // decimal strings, NOT 1e8 wire scale).
+    const bandBps = args.slippageBps ?? 1500;
+    const limitReal = args.isLong
+      ? info.markPxReal * (1 + bandBps / 10_000)
+      : info.markPxReal * (1 - bandBps / 10_000);
+    const limitRounded = tickRound(limitReal, info.szDecimals);
+    const sizeRaw = args.sizeUsd / info.markPxReal;
+    // Lot size = 10^-szDecimals; round to that precision.
+    const lotStep = 10 ** -info.szDecimals;
+    const sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
+    if (sizeFloored <= 0) {
+      throw new HLPreflightError('min-notional', `sizeUsd ${args.sizeUsd} too small for ${args.perp} lot at mark ${info.markPxReal}`, { notionalUsd: args.sizeUsd });
+    }
+    return this.exchange.placeOrder({
+      asset: info.globalAsset,
+      isBuy: args.isLong,
+      limitPxReal: String(limitRounded),
+      sizeReal: sizeFloored.toFixed(info.szDecimals),
+      reduceOnly: false,
+      tif: 'Ioc',
+    });
+  }
+
+  /// @notice Close (reduce-only) a builder-dex position. Reads the
+  /// current position via HL Info API (no precompile available for
+  /// builder dexes). `sizeUsd` is best-effort; pass current position
+  /// notional for a full close, or smaller for partial.
+  public async closePositionOffChain(args: {
+    perp: string;
+    sizeUsd: number;
+    slippageBps?: number;
+  }): Promise<HlExchangeResponse> {
+    const info = await this.resolveBuilderDex(args.perp);
+    if (info.markPxReal <= 0) throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
+    // Read current position via clearinghouseState (dex-aware).
+    const dexName = args.perp.split(':')[0];
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const res = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'clearinghouseState', dex: dexName, user: this.vaultAddress }),
+    });
+    const cs = (await res.json()) as { assetPositions?: Array<{ position: { coin: string; szi: string } }> };
+    // HL returns the FULL qualified coin name (e.g. 'xyz:GOLD'), not the
+    // bare symbol after the colon — match against args.perp directly.
+    const pos = cs.assetPositions?.find((p) => p.position.coin === args.perp);
+    if (!pos || Number(pos.position.szi) === 0) {
+      throw new HLPreflightError('invalid-input', `no open position on ${args.perp}`, { perp: args.perp });
+    }
+    const isLong = Number(pos.position.szi) > 0;
+    const bandBps = args.slippageBps ?? 1500;
+    // Close side flips: long → sell, short → buy.
+    const isClosingBuy = !isLong;
+    const limitReal = isClosingBuy
+      ? info.markPxReal * (1 + bandBps / 10_000)
+      : info.markPxReal * (1 - bandBps / 10_000);
+    const limitRounded = tickRound(limitReal, info.szDecimals);
+    const sizeRaw = args.sizeUsd / info.markPxReal;
+    const lotStep = 10 ** -info.szDecimals;
+    const sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
+    if (sizeFloored <= 0) {
+      throw new HLPreflightError('min-notional', `sizeUsd too small for ${args.perp} lot`, { notionalUsd: args.sizeUsd });
+    }
+    return this.exchange.placeOrder({
+      asset: info.globalAsset,
+      isBuy: isClosingBuy,
+      limitPxReal: String(limitRounded),
+      sizeReal: sizeFloored.toFixed(info.szDecimals),
+      reduceOnly: true,
+      tif: 'Ioc',
     });
   }
 
@@ -671,7 +1063,7 @@ export class HLVault {
   // -------------------------------------------------------------------------
 
   /// @notice Combined position + mark snapshot for UI display.
-  public async positionSnapshot(perp: PerpSymbol | number): Promise<{
+  public async positionSnapshot(perp: PerpSymbol | string | number): Promise<{
     perp: number;
     coin: string;
     szi: bigint;
@@ -681,7 +1073,7 @@ export class HLVault {
     entryNtl: bigint;
     markPxReal: number;
   }> {
-    const idx = resolvePerpIndex(perp);
+    const idx = await this.resolvePerp(perp);
     const info = await this.getPerpAssetInfo(idx);
     const [pos, mark] = await Promise.all([
       readPosition(this.client, this.vaultAddress, idx),

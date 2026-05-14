@@ -20,10 +20,20 @@ export const hlOpenPositionSchema = z.object({
 
 export type HlOpenPositionInput = z.infer<typeof hlOpenPositionSchema>;
 
+/**
+ * A perp symbol like `xyz:GOLD` / `xyz:BRENTOIL` / `xyz:COPPER` lives on
+ * an HIP-3 builder dex. CoreWriter does not (yet) route HIP-3 orders, so
+ * we sign + post off-chain via the HL Exchange API instead of returning
+ * a `SendTransactionParams` envelope.
+ */
+function isBuilderDexSymbol(perp: string): boolean {
+  return perp.includes(':');
+}
+
 export const hlOpenPositionTool = {
   name: 'factor_hl_open_position',
   description:
-    'Open a HyperLiquid perp position (long or short) sized in USD through a Factor vault on HyperEVM (chain 999). Routes through the HL adapter via the vault manager.',
+    'Open a HyperLiquid perp position (long or short) sized in USD through a Factor vault on HyperEVM (chain 999). Main-dex symbols (BTC, ETH, ...) route on-chain via the HL adapter; HIP-3 builder-dex symbols (xyz:GOLD, xyz:BRENTOIL, xyz:COPPER, ...) route off-chain via the HL Exchange API.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -33,7 +43,8 @@ export const hlOpenPositionTool = {
       },
       perp: {
         type: 'string',
-        description: 'Perp symbol, e.g. "ETH", "BTC", "SOL".',
+        description:
+          'Perp symbol. Main dex: "ETH", "BTC", "SOL". Builder dex (HIP-3): "xyz:GOLD", "xyz:BRENTOIL", "xyz:COPPER", "xyz:AAPL", etc.',
       },
       side: {
         type: 'string',
@@ -68,12 +79,35 @@ export const hlOpenPositionTool = {
 
     const vault = validated.vault as Address;
     const slippageBps = validated.slippageBps ?? 1000;
+    const isLong = validated.side === 'long';
 
     try {
       const hlVault = buildHlVault(vault, { password: validated.password });
+
+      // HIP-3 builder dex path — sign + post via HL Exchange API, no EVM tx.
+      if (isBuilderDexSymbol(validated.perp)) {
+        const hlResponse = await hlVault.openPositionOffChain({
+          perp: validated.perp,
+          isLong,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+        });
+        return {
+          submitted: true,
+          action: 'hl_open_position',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          asset: validated.perp,
+          side: validated.side,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+          hlResponse: hlResponse as unknown as Record<string, unknown>,
+        };
+      }
+
       const sendTx: SendTransactionParams = await hlVault.openPosition({
         perp: validated.perp,
-        isLong: validated.side === 'long',
+        isLong,
         sizeUsd: validated.sizeUsd,
         slippageBps,
       });

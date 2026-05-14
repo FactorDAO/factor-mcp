@@ -86,6 +86,9 @@ import { hlWithdrawToEvmTool } from './hl/hl-withdraw-to-evm.js';
 import { hlGetNavTool } from './hl/hl-get-nav.js';
 import { hlGetPositionsTool } from './hl/hl-get-positions.js';
 import { hlSetSlippageCapTool } from './hl/hl-set-slippage-cap.js';
+import { hlTransferToBuilderDexTool } from './hl/hl-transfer-to-builder-dex.js';
+import { hlTransferFromBuilderDexTool } from './hl/hl-transfer-from-builder-dex.js';
+import { hlListPerpsTool } from './hl/hl-list-perps.js';
 
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
@@ -173,6 +176,9 @@ export {
   hlGetNavTool,
   hlGetPositionsTool,
   hlSetSlippageCapTool,
+  hlTransferToBuilderDexTool,
+  hlTransferFromBuilderDexTool,
+  hlListPerpsTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -265,7 +271,7 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // HyperLiquid (10)
+  // HyperLiquid (13)
   hlOpenPositionTool,
   hlClosePositionTool,
   hlSetLeverageTool,
@@ -276,6 +282,9 @@ export const allTools = [
   hlGetNavTool,
   hlGetPositionsTool,
   hlSetSlippageCapTool,
+  hlTransferToBuilderDexTool,
+  hlTransferFromBuilderDexTool,
+  hlListPerpsTool,
 
   // Yield (1)
   pendleLpTool,
@@ -362,6 +371,9 @@ export type ToolName =
   | 'factor_hl_get_nav'
   | 'factor_hl_get_positions'
   | 'factor_hl_set_slippage_cap'
+  | 'factor_hl_transfer_to_builder_dex'
+  | 'factor_hl_transfer_from_builder_dex'
+  | 'factor_hl_list_perps'
   | 'factor_pendle_lp'
   | 'factor_flashloan'
   | 'factor_preview_transaction'

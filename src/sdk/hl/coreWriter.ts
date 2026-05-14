@@ -63,6 +63,17 @@ export const hyperLiquidPerpAdapterAbi = [
   },
   {
     type: 'function',
+    name: 'transferUsdcBetweenLedgers',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'srcDex', type: 'uint32' },
+      { name: 'dstDex', type: 'uint32' },
+      { name: 'amountWei', type: 'uint64' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'openPosition',
     stateMutability: 'nonpayable',
     inputs: [
@@ -410,6 +421,33 @@ export function encodeBridgeSpotToEvm(
       abi: hyperLiquidPerpAdapterAbi,
       functionName: 'bridgeSpotToEvm',
       args: [args.token, args.amountWei],
+    }),
+  };
+}
+
+/// @notice Move USDC between any two HL ledgers within the vault's own
+/// HL identity (main perp ⇄ xyz builder perp ⇄ spot). Wraps CoreWriter
+/// action 13 `sendAsset`. Adapter hard-restricts destination to the
+/// vault itself and token to 0 (USDC).
+/// @param srcDex 0 = main HL perp, 1 = xyz builder dex, `0xFFFFFFFF` = spot
+/// @param dstDex same encoding
+/// @param amountWei8dec USDC amount in 8-decimal spot scale. Empirically
+///        HL expects 8-dec for ALL ledger pairs even when transferring
+///        between two 6-dec perp dexes — HL converts on the destination.
+export function encodeTransferUsdcBetweenLedgers(
+  adapter: Address,
+  args: { srcDex: number; dstDex: number; amountWei8dec: bigint },
+): UnsignedTx {
+  assertUint64(args.amountWei8dec, 'amountWei8dec');
+  if (args.srcDex === args.dstDex) {
+    throw new Error('encodeTransferUsdcBetweenLedgers: srcDex == dstDex');
+  }
+  return {
+    to: adapter,
+    data: encodeFunctionData({
+      abi: hyperLiquidPerpAdapterAbi,
+      functionName: 'transferUsdcBetweenLedgers',
+      args: [args.srcDex, args.dstDex, args.amountWei8dec],
     }),
   };
 }

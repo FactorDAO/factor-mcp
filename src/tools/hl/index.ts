@@ -8,3 +8,6 @@ export { hlWithdrawToEvmTool } from './hl-withdraw-to-evm.js';
 export { hlGetNavTool } from './hl-get-nav.js';
 export { hlGetPositionsTool } from './hl-get-positions.js';
 export { hlSetSlippageCapTool } from './hl-set-slippage-cap.js';
+export { hlTransferToBuilderDexTool } from './hl-transfer-to-builder-dex.js';
+export { hlTransferFromBuilderDexTool } from './hl-transfer-from-builder-dex.js';
+export { hlListPerpsTool } from './hl-list-perps.js';

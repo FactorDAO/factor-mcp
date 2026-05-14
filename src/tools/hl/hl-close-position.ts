@@ -17,15 +17,24 @@ export const hlClosePositionSchema = z.object({
 
 export type HlClosePositionInput = z.infer<typeof hlClosePositionSchema>;
 
+/** HIP-3 builder-dex symbol → off-chain Exchange API close. */
+function isBuilderDexSymbol(perp: string): boolean {
+  return perp.includes(':');
+}
+
 export const hlClosePositionTool = {
   name: 'factor_hl_close_position',
   description:
-    'Reduce / close a HyperLiquid perp position (reduce-only order) sized in USD through a Factor vault. HyperEVM (chain 999) only.',
+    'Reduce / close a HyperLiquid perp position (reduce-only order) sized in USD through a Factor vault. HyperEVM (chain 999) only. Main-dex symbols (BTC, ETH, ...) route on-chain; HIP-3 builder-dex symbols (xyz:GOLD, xyz:BRENTOIL, ...) route off-chain via the HL Exchange API.',
   inputSchema: {
     type: 'object',
     properties: {
       vault: { type: 'string', description: 'Vault contract address.' },
-      perp: { type: 'string', description: 'Perp symbol, e.g. "ETH".' },
+      perp: {
+        type: 'string',
+        description:
+          'Perp symbol. Main dex: "ETH", "BTC", "SOL". Builder dex (HIP-3): "xyz:GOLD", "xyz:BRENTOIL", ...',
+      },
       sizeUsd: { type: 'number', description: 'Notional USD to close (reduce-only).' },
       slippageBps: { type: 'number', description: 'Max slippage in bps. Default 1000.' },
       password: { type: 'string', description: 'Wallet password if encrypted.' },
@@ -46,6 +55,25 @@ export const hlClosePositionTool = {
 
     try {
       const hlVault = buildHlVault(vault, { password: validated.password });
+
+      if (isBuilderDexSymbol(validated.perp)) {
+        const hlResponse = await hlVault.closePositionOffChain({
+          perp: validated.perp,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+        });
+        return {
+          submitted: true,
+          action: 'hl_close_position',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          asset: validated.perp,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+          hlResponse: hlResponse as unknown as Record<string, unknown>,
+        };
+      }
+
       const sendTx: SendTransactionParams = await hlVault.closePosition({
         perp: validated.perp,
         sizeUsd: validated.sizeUsd,
