@@ -34,6 +34,7 @@ import {
   encodeForceForgetCloid,
   encodeOpenPosition,
   encodePlaceOrder,
+  encodeSetMaxKnownBuilderDex,
   encodeSettlePending,
   encodeSpotSend,
   encodeSyncPosition,
@@ -1341,6 +1342,22 @@ export class HLVault {
     ]);
   }
 
+  /// @notice `setMaxKnownBuilderDex` is owner-only on the adapter — wraps
+  /// in `executeByOwner`. Bumps the on-chain ceiling for
+  /// `transferUsdcBetweenLedgers` destination dex. Bumping this here does
+  /// NOT auto-update the SDK `SUPPORTED_PERP_DEXES` whitelist — that is a
+  /// separate product decision. Sanity-capped at 100.
+  public setMaxKnownBuilderDex(newMax: number): SendTransactionParams {
+    if (!Number.isInteger(newMax) || newMax < 0 || newMax > 100) {
+      throw new Error(
+        `setMaxKnownBuilderDex: newMax must be an integer in [0, 100] (got ${newMax})`,
+      );
+    }
+    return this.executeByOwner([
+      encodeSetMaxKnownBuilderDex(this.addresses.adapter, newMax),
+    ]);
+  }
+
   // -------------------------------------------------------------------------
   // Off-chain (HL Exchange API)
   // -------------------------------------------------------------------------
@@ -1615,6 +1632,80 @@ export class HLVault {
       sizeReal: hlFormatDecimal(sizeFloored, info.szDecimals),
       reduceOnly: true,
       tif: 'Ioc',
+    });
+  }
+
+  /// @notice Cancel an order by cloid via the off-chain HL Exchange API.
+  /// Used for HIP-3 builder-dex perps (xyz:GOLD, etc) which CoreWriter
+  /// does not route. Main-dex callers should prefer `cancelOrder()`
+  /// (on-chain via CoreWriter).
+  ///
+  /// SAFETY: this method only kills a resting order. It does NOT move
+  /// funds — neither to third parties nor between the vault's own accounts.
+  ///
+  /// @param perp Qualified builder-dex symbol ('xyz:GOLD') OR main-dex
+  ///   symbol/index ('ETH' / 0). The presence of ':' is the routing signal.
+  /// @param cloid Client order id as 0x-prefixed 32-hex string.
+  public async cancelOrderOffChain(args: {
+    perp: string | number;
+    cloid: string;
+  }): Promise<HlExchangeResponse> {
+    let asset: number;
+    if (typeof args.perp === 'string' && args.perp.includes(':')) {
+      const info = await this.resolveBuilderDex(args.perp);
+      asset = info.globalAsset;
+    } else {
+      asset = await this.resolvePerp(args.perp);
+    }
+    return this.exchange.cancelByCloid(asset, args.cloid);
+  }
+
+  /// @notice Place a raw order on a HIP-3 builder dex via the off-chain
+  /// HL Exchange API. Caller supplies an exact USD limit price + tif.
+  /// Main-dex callers should prefer `placeOrder()` (on-chain via CoreWriter).
+  ///
+  /// SAFETY: this method routes to the vault's own HL account — it does
+  /// NOT move funds to any third party. The position created (if filled)
+  /// belongs to the vault.
+  ///
+  /// Min-notional and lot-floor checks are applied; pass a `sizeUsd` that
+  /// clears HL_MIN_NOTIONAL_USD ($10) at the current builder-dex mark.
+  public async placeOrderOffChain(args: {
+    perp: string;
+    isLong: boolean;
+    sizeUsd: number;
+    limitPxReal: number;
+    tif: 'Ioc' | 'Alo' | 'Gtc';
+    reduceOnly?: boolean;
+    cloid?: string;
+  }): Promise<HlExchangeResponse> {
+    const info = await this.resolveBuilderDex(args.perp);
+    if (info.markPxReal <= 0) {
+      throw new HLPreflightError(
+        'invalid-input',
+        `no mark for ${args.perp}`,
+        { perp: args.perp },
+      );
+    }
+    const limitRounded = tickRound(args.limitPxReal, info.szDecimals);
+    const lotStep = 10 ** -info.szDecimals;
+    const sizeFloored =
+      Math.floor((args.sizeUsd / info.markPxReal) / lotStep) * lotStep;
+    if (sizeFloored <= 0 || sizeFloored * info.markPxReal < HL_MIN_NOTIONAL_USD) {
+      throw new HLPreflightError(
+        'min-notional',
+        `sizeUsd ${args.sizeUsd} too small for ${args.perp}: lot-floor at mark ${info.markPxReal.toFixed(2)} yields ${(sizeFloored * info.markPxReal).toFixed(2)} < $${HL_MIN_NOTIONAL_USD} min`,
+        { notionalUsd: args.sizeUsd },
+      );
+    }
+    return this.exchange.placeOrder({
+      asset: info.globalAsset,
+      isBuy: args.isLong,
+      limitPxReal: String(limitRounded),
+      sizeReal: hlFormatDecimal(sizeFloored, info.szDecimals),
+      reduceOnly: args.reduceOnly ?? false,
+      tif: args.tif,
+      cloid: args.cloid,
     });
   }
 

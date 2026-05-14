@@ -97,6 +97,24 @@ const mockSettlePending = vi.fn((_cloid: bigint) => ({
   data: '0xb0b1ce5e' as `0x${string}`,
   value: 0n,
 }));
+const mockCancelOrder = vi.fn(async (_args: unknown) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xc4ce10ab' as `0x${string}`,
+  value: 0n,
+}));
+const mockCancelOrderOffChain = vi.fn(async (_args: unknown) => ({
+  status: 'ok',
+  response: { type: 'cancel', data: { statuses: [{ success: true }] } },
+} as unknown));
+const mockPlaceOrder = vi.fn(async (_args: unknown) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xb1d50f4a' as `0x${string}`,
+  value: 0n,
+}));
+const mockPlaceOrderOffChain = vi.fn(async (_args: unknown) => ({
+  status: 'ok',
+  response: { type: 'order', data: { statuses: [{ resting: { oid: 1 } }] } },
+} as unknown));
 const mockListPerps = vi.fn(async (_dex?: string) => [
   {
     index: 0,
@@ -113,6 +131,38 @@ const mockListPerps = vi.fn(async (_dex?: string) => [
     maxLeverage: 3,
     onlyIsolated: true,
     markPx: 88.12,
+  },
+]);
+const mockForceForgetCloid = vi.fn((_cloid: bigint) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xffc1eafe' as `0x${string}`,
+  value: 0n,
+}));
+const mockSetMaxKnownBuilderDex = vi.fn((_newMax: number) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xa1b2c3d4' as `0x${string}`,
+  value: 0n,
+}));
+const mockSpotSend = vi.fn((_args: unknown) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xdeadcaff' as `0x${string}`,
+  value: 0n,
+}));
+const mockListSpotTokens = vi.fn(async () => [
+  { index: 0, name: 'USDC', szDecimals: 8, weiDecimals: 8 },
+  { index: 150, name: 'HYPE', szDecimals: 8, weiDecimals: 18, evmContract: '0x0000000000000000000000000000000000000150' },
+  { index: 200, name: 'AAPL', szDecimals: 4, weiDecimals: 8 },
+]);
+const mockListDexes = vi.fn(async (_opts?: { includeUnsupported?: boolean }) => [
+  { index: 0, name: 'main', type: 'main' as const, assetCount: 230, supported: true },
+  {
+    index: 1,
+    name: 'xyz',
+    type: 'builder' as const,
+    deployer: '0xDEADbeef00000000000000000000000000000001',
+    feeRecipient: '0xDEADbeef00000000000000000000000000000002',
+    assetCount: 12,
+    supported: true,
   },
 ]);
 
@@ -134,6 +184,15 @@ vi.mock('../src/tools/hl/hl-vault-factory.js', () => {
       listPerps: mockListPerps,
       syncPosition: mockSyncPosition,
       settlePending: mockSettlePending,
+      cancelOrder: mockCancelOrder,
+      cancelOrderOffChain: mockCancelOrderOffChain,
+      placeOrder: mockPlaceOrder,
+      placeOrderOffChain: mockPlaceOrderOffChain,
+      forceForgetCloid: mockForceForgetCloid,
+      setMaxKnownBuilderDex: mockSetMaxKnownBuilderDex,
+      spotSend: mockSpotSend,
+      listSpotTokens: mockListSpotTokens,
+      listDexes: mockListDexes,
     })),
   };
 });
@@ -189,6 +248,26 @@ import {
 import { hlListPerpsTool, hlListPerpsSchema } from '../src/tools/hl/hl-list-perps.js';
 import { hlSyncPositionTool, hlSyncPositionSchema } from '../src/tools/hl/hl-sync-position.js';
 import { hlSettlePendingTool, hlSettlePendingSchema } from '../src/tools/hl/hl-settle-pending.js';
+import { hlCancelOrderTool, hlCancelOrderSchema } from '../src/tools/hl/hl-cancel-order.js';
+import {
+  hlCancelOrderOffchainTool,
+  hlCancelOrderOffchainSchema,
+} from '../src/tools/hl/hl-cancel-order-offchain.js';
+import { hlPlaceOrderRawTool, hlPlaceOrderRawSchema } from '../src/tools/hl/hl-place-order-raw.js';
+import {
+  hlForceForgetCloidTool,
+  hlForceForgetCloidSchema,
+} from '../src/tools/hl/hl-force-forget-cloid.js';
+import {
+  hlSetMaxKnownBuilderDexTool,
+  hlSetMaxKnownBuilderDexSchema,
+} from '../src/tools/hl/hl-set-max-known-builder-dex.js';
+import { hlSpotSendTool, hlSpotSendSchema } from '../src/tools/hl/hl-spot-send.js';
+import {
+  hlListSpotTokensTool,
+  hlListSpotTokensSchema,
+} from '../src/tools/hl/hl-list-spot-tokens.js';
+import { hlListDexesTool, hlListDexesSchema } from '../src/tools/hl/hl-list-dexes.js';
 import { HL_MAX_SLIPPAGE_BPS, HYPEREVM_CHAIN_ID } from '../src/tools/hl/common.js';
 import { configManager } from '../src/config/index.js';
 
@@ -218,6 +297,15 @@ beforeEach(() => {
   mockListPerps.mockClear();
   mockSyncPosition.mockClear();
   mockSettlePending.mockClear();
+  mockCancelOrder.mockClear();
+  mockCancelOrderOffChain.mockClear();
+  mockPlaceOrder.mockClear();
+  mockPlaceOrderOffChain.mockClear();
+  mockForceForgetCloid.mockClear();
+  mockSetMaxKnownBuilderDex.mockClear();
+  mockSpotSend.mockClear();
+  mockListSpotTokens.mockClear();
+  mockListDexes.mockClear();
 });
 
 const VALID_VAULT = '0x1234567890AbcdEF1234567890aBcdef12345678';
@@ -239,6 +327,14 @@ const allTools = [
   hlListPerpsTool,
   hlSyncPositionTool,
   hlSettlePendingTool,
+  hlCancelOrderTool,
+  hlCancelOrderOffchainTool,
+  hlPlaceOrderRawTool,
+  hlForceForgetCloidTool,
+  hlSetMaxKnownBuilderDexTool,
+  hlSpotSendTool,
+  hlListSpotTokensTool,
+  hlListDexesTool,
 ];
 
 describe('HL tools — JSON Schema (MCP inputSchema)', () => {
@@ -265,8 +361,8 @@ describe('HL tools — JSON Schema (MCP inputSchema)', () => {
     });
   }
 
-  it('exactly 15 HL tools registered', () => {
-    expect(allTools.length).toBe(15);
+  it('exactly 23 HL tools registered', () => {
+    expect(allTools.length).toBe(23);
   });
 
   it('every tool name starts with factor_hl_', () => {
@@ -533,6 +629,37 @@ describe('chain id gating — HL tools reject non-HyperEVM', () => {
       hlSettlePendingTool.handler({
         vault: VALID_VAULT,
         cloid: '0x0123456789abcdef0123456789abcdef',
+      }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_cancel_order throws on chain 42161', async () => {
+    await expect(
+      hlCancelOrderTool.handler({
+        vault: VALID_VAULT,
+        perp: 0,
+        cloid: '0x0123456789abcdef0123456789abcdef',
+      }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_cancel_order_offchain throws on chain 42161', async () => {
+    await expect(
+      hlCancelOrderOffchainTool.handler({
+        vault: VALID_VAULT,
+        perp: 'xyz:GOLD',
+        cloid: '0x0123456789abcdef0123456789abcdef',
+      }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_place_order_raw throws on chain 42161', async () => {
+    await expect(
+      hlPlaceOrderRawTool.handler({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 100,
+        limitPxReal: 4000,
+        tif: 'Ioc',
+        reduceOnly: false,
       }),
     ).rejects.toThrow(/HyperEVM/);
   });
@@ -967,5 +1094,571 @@ describe('hl_settle_pending — handler', () => {
 
   it('description mentions MIN_SETTLE_DELAY_BLOCKS gate', () => {
     expect(hlSettlePendingTool.description).toMatch(/MIN_SETTLE_DELAY_BLOCKS/);
+  });
+});
+
+describe('hl_force_forget_cloid — zod schema + handler', () => {
+  const VALID_CLOID = '0x0123456789abcdef0123456789abcdef';
+
+  it('accepts valid 16-byte hex cloid', () => {
+    expect(() =>
+      hlForceForgetCloidSchema.parse({ vault: VALID_VAULT, cloid: VALID_CLOID }),
+    ).not.toThrow();
+  });
+
+  it('rejects non-hex cloid', () => {
+    expect(() =>
+      hlForceForgetCloidSchema.parse({ vault: VALID_VAULT, cloid: 'not-hex' }),
+    ).toThrow();
+  });
+
+  it('rejects wrong-length cloid', () => {
+    expect(() =>
+      hlForceForgetCloidSchema.parse({ vault: VALID_VAULT, cloid: '0x1234' }),
+    ).toThrow();
+  });
+
+  it('calls HLVault.forceForgetCloid with bigint cloid', async () => {
+    const r = (await hlForceForgetCloidTool.handler({
+      vault: VALID_VAULT,
+      cloid: VALID_CLOID,
+    })) as { submitted?: boolean; txCalldata?: { to?: string; data?: string } };
+    expect(mockForceForgetCloid).toHaveBeenCalledTimes(1);
+    expect(mockForceForgetCloid).toHaveBeenCalledWith(BigInt(VALID_CLOID));
+    expect(r.submitted).toBe(true);
+    expect(r.txCalldata?.to).toBeDefined();
+    expect(r.txCalldata?.data).toBeDefined();
+  });
+
+  it('rejects on non-HyperEVM chain', async () => {
+    setChainId(42161, 'ARBITRUM_ONE');
+    await expect(
+      hlForceForgetCloidTool.handler({ vault: VALID_VAULT, cloid: VALID_CLOID }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+
+  it('description flags owner-only emergency cleanup', () => {
+    expect(hlForceForgetCloidTool.description).toMatch(/OWNER-ONLY/);
+  });
+});
+
+describe('hl_set_max_known_builder_dex — zod schema + handler', () => {
+  it('accepts a valid newMax in [0, 100]', () => {
+    expect(() =>
+      hlSetMaxKnownBuilderDexSchema.parse({ vault: VALID_VAULT, newMax: 10 }),
+    ).not.toThrow();
+    expect(() =>
+      hlSetMaxKnownBuilderDexSchema.parse({ vault: VALID_VAULT, newMax: 0 }),
+    ).not.toThrow();
+    expect(() =>
+      hlSetMaxKnownBuilderDexSchema.parse({ vault: VALID_VAULT, newMax: 100 }),
+    ).not.toThrow();
+  });
+
+  it('rejects newMax above sanity cap', () => {
+    expect(() =>
+      hlSetMaxKnownBuilderDexSchema.parse({ vault: VALID_VAULT, newMax: 101 }),
+    ).toThrow();
+  });
+
+  it('rejects negative newMax', () => {
+    expect(() =>
+      hlSetMaxKnownBuilderDexSchema.parse({ vault: VALID_VAULT, newMax: -1 }),
+    ).toThrow();
+  });
+
+  it('rejects non-integer newMax', () => {
+    expect(() =>
+      hlSetMaxKnownBuilderDexSchema.parse({ vault: VALID_VAULT, newMax: 1.5 }),
+    ).toThrow();
+  });
+
+  it('calls HLVault.setMaxKnownBuilderDex with newMax', async () => {
+    const r = (await hlSetMaxKnownBuilderDexTool.handler({
+      vault: VALID_VAULT,
+      newMax: 9,
+    })) as { submitted?: boolean; txCalldata?: { to?: string; data?: string } };
+    expect(mockSetMaxKnownBuilderDex).toHaveBeenCalledTimes(1);
+    expect(mockSetMaxKnownBuilderDex).toHaveBeenCalledWith(9);
+    expect(r.submitted).toBe(true);
+    expect(r.txCalldata?.to).toBeDefined();
+  });
+
+  it('description notes whitelist non-coupling', () => {
+    expect(hlSetMaxKnownBuilderDexTool.description).toMatch(/SUPPORTED_PERP_DEXES/);
+  });
+
+  it('rejects on non-HyperEVM chain', async () => {
+    setChainId(42161, 'ARBITRUM_ONE');
+    await expect(
+      hlSetMaxKnownBuilderDexTool.handler({ vault: VALID_VAULT, newMax: 5 }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+});
+
+describe('hl_spot_send — zod schema + handler', () => {
+  it('accepts valid token + amountWei', () => {
+    expect(() =>
+      hlSpotSendSchema.parse({ vault: VALID_VAULT, token: 0, amountWei: '100000000' }),
+    ).not.toThrow();
+  });
+
+  it('rejects negative token', () => {
+    expect(() =>
+      hlSpotSendSchema.parse({ vault: VALID_VAULT, token: -1, amountWei: '1' }),
+    ).toThrow();
+  });
+
+  it('rejects non-integer token', () => {
+    expect(() =>
+      hlSpotSendSchema.parse({ vault: VALID_VAULT, token: 1.5, amountWei: '1' }),
+    ).toThrow();
+  });
+
+  it('CRITICAL — schema MUST NOT accept a `to` parameter (vault-to-vault only)', () => {
+    // Confirm the resulting parsed object never carries a `to` field.
+    const parsed = hlSpotSendSchema.parse({
+      vault: VALID_VAULT,
+      token: 0,
+      amountWei: '1',
+      to: '0xDEADbeef00000000000000000000000000000003',
+    } as never);
+    expect((parsed as { to?: unknown }).to).toBeUndefined();
+    // Confirm the schema object does NOT declare a `to` field.
+    expect(Object.keys(hlSpotSendSchema.shape)).not.toContain('to');
+  });
+
+  it('calls HLVault.spotSend with { token, amountWei: bigint }', async () => {
+    const r = (await hlSpotSendTool.handler({
+      vault: VALID_VAULT,
+      token: 0,
+      amountWei: '100000000',
+    })) as { submitted?: boolean; txCalldata?: { to?: string; data?: string } };
+    expect(mockSpotSend).toHaveBeenCalledTimes(1);
+    expect(mockSpotSend).toHaveBeenCalledWith({ token: 0, amountWei: 100000000n });
+    expect(r.submitted).toBe(true);
+    expect(r.txCalldata?.to).toBeDefined();
+  });
+
+  it('rejects zero amountWei', async () => {
+    await expect(
+      hlSpotSendTool.handler({ vault: VALID_VAULT, token: 0, amountWei: '0' }),
+    ).rejects.toThrow();
+  });
+
+  it('description flags vault-to-vault hardcoded destination', () => {
+    expect(hlSpotSendTool.description).toMatch(/hardcoded/);
+    expect(hlSpotSendTool.description).toMatch(/CANNOT transfer to a third-party/);
+  });
+
+  it('every property description warns about vault-to-vault restriction', () => {
+    const props = hlSpotSendTool.inputSchema.properties as Record<string, { description: string }>;
+    expect(props.token.description).toMatch(/Cannot send to a third address|Vault-to-vault/i);
+    expect(props.amountWei.description).toMatch(/Cannot send to a third address|Vault-to-vault/i);
+  });
+
+  it('rejects on non-HyperEVM chain', async () => {
+    setChainId(42161, 'ARBITRUM_ONE');
+    await expect(
+      hlSpotSendTool.handler({ vault: VALID_VAULT, token: 0, amountWei: '1' }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+});
+
+describe('hl_list_spot_tokens — zod schema + handler', () => {
+  it('accepts empty input', () => {
+    expect(() => hlListSpotTokensSchema.parse({})).not.toThrow();
+  });
+
+  it('accepts optional limit + filter', () => {
+    expect(() =>
+      hlListSpotTokensSchema.parse({ limit: 50, filter: 'AAPL' }),
+    ).not.toThrow();
+  });
+
+  it('rejects non-positive limit', () => {
+    expect(() => hlListSpotTokensSchema.parse({ limit: 0 })).toThrow();
+  });
+
+  it('calls HLVault.listSpotTokens and returns count + tokens', async () => {
+    const r = await hlListSpotTokensTool.handler({});
+    expect(mockListSpotTokens).toHaveBeenCalledTimes(1);
+    expect(r.total).toBe(3);
+    expect(r.count).toBe(3);
+    expect(r.tokens[0].name).toBe('USDC');
+    expect(r.tokens[1].evmContract).toBeDefined();
+  });
+
+  it('applies substring filter', async () => {
+    const r = await hlListSpotTokensTool.handler({ filter: 'aapl' });
+    expect(r.count).toBe(1);
+    expect(r.tokens[0].name).toBe('AAPL');
+    expect(r.total).toBe(3);
+  });
+
+  it('applies limit slicing', async () => {
+    const r = await hlListSpotTokensTool.handler({ limit: 2 });
+    expect(r.count).toBe(2);
+    expect(r.total).toBe(3);
+  });
+
+  it('rejects on non-HyperEVM chain', async () => {
+    setChainId(42161, 'ARBITRUM_ONE');
+    await expect(hlListSpotTokensTool.handler({})).rejects.toThrow(/HyperEVM/);
+  });
+});
+
+describe('hl_list_dexes — zod schema + handler', () => {
+  it('accepts empty input (default includeUnsupported=false)', () => {
+    const parsed = hlListDexesSchema.parse({});
+    expect(parsed.includeUnsupported).toBe(false);
+  });
+
+  it('accepts includeUnsupported=true', () => {
+    const parsed = hlListDexesSchema.parse({ includeUnsupported: true });
+    expect(parsed.includeUnsupported).toBe(true);
+  });
+
+  it('passes includeUnsupported to HLVault.listDexes', async () => {
+    await hlListDexesTool.handler({ includeUnsupported: true });
+    expect(mockListDexes).toHaveBeenCalledTimes(1);
+    expect(mockListDexes).toHaveBeenCalledWith({ includeUnsupported: true });
+  });
+
+  it('defaults includeUnsupported to false', async () => {
+    await hlListDexesTool.handler({} as never);
+    expect(mockListDexes).toHaveBeenCalledWith({ includeUnsupported: false });
+  });
+
+  it('returns count + dexes with metadata', async () => {
+    const r = await hlListDexesTool.handler({ includeUnsupported: false });
+    expect(r.count).toBe(2);
+    expect(r.dexes[0].name).toBe('main');
+    expect(r.dexes[0].type).toBe('main');
+    expect(r.dexes[1].name).toBe('xyz');
+    expect(r.dexes[1].deployer).toBeDefined();
+    expect(r.dexes[1].assetCount).toBe(12);
+    expect(r.dexes[1].supported).toBe(true);
+  });
+
+  it('rejects on non-HyperEVM chain', async () => {
+    setChainId(42161, 'ARBITRUM_ONE');
+    await expect(
+      hlListDexesTool.handler({ includeUnsupported: false }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+});
+
+// ============================================================================
+// HIGH-priority gap fill: cancel + raw placeOrder tools (gap fill 1/3)
+// ============================================================================
+
+const VALID_CLOID32 = '0xabcdef0123456789abcdef0123456789';
+
+describe('hl_cancel_order — zod schema', () => {
+  it('accepts a numeric perp + valid cloid', () => {
+    expect(() =>
+      hlCancelOrderSchema.parse({ vault: VALID_VAULT, perp: 0, cloid: VALID_CLOID32 }),
+    ).not.toThrow();
+  });
+  it('rejects non-integer perp', () => {
+    expect(() =>
+      hlCancelOrderSchema.parse({ vault: VALID_VAULT, perp: 1.5, cloid: VALID_CLOID32 }),
+    ).toThrow();
+  });
+  it('rejects negative perp', () => {
+    expect(() =>
+      hlCancelOrderSchema.parse({ vault: VALID_VAULT, perp: -1, cloid: VALID_CLOID32 }),
+    ).toThrow();
+  });
+  it('rejects malformed cloid (missing 0x)', () => {
+    expect(() =>
+      hlCancelOrderSchema.parse({
+        vault: VALID_VAULT,
+        perp: 0,
+        cloid: 'abcdef0123456789abcdef0123456789',
+      }),
+    ).toThrow();
+  });
+  it('rejects malformed cloid (wrong length)', () => {
+    expect(() =>
+      hlCancelOrderSchema.parse({ vault: VALID_VAULT, perp: 0, cloid: '0xdeadbeef' }),
+    ).toThrow();
+  });
+});
+
+describe('hl_cancel_order — handler', () => {
+  it('invokes HLVault.cancelOrder with parsed perp + bigint cloid', async () => {
+    await hlCancelOrderTool.handler({
+      vault: VALID_VAULT,
+      perp: 1,
+      cloid: VALID_CLOID32,
+    });
+    expect(mockCancelOrder).toHaveBeenCalledTimes(1);
+    const call = mockCancelOrder.mock.calls[0]?.[0] as { perp: number; cloid: bigint };
+    expect(call.perp).toBe(1);
+    expect(typeof call.cloid).toBe('bigint');
+    expect(call.cloid).toBe(BigInt(VALID_CLOID32));
+  });
+  it('returns a tx envelope in simulation mode', async () => {
+    const r = (await hlCancelOrderTool.handler({
+      vault: VALID_VAULT,
+      perp: 0,
+      cloid: VALID_CLOID32,
+    })) as { transaction?: { to?: string; data?: string }; submitted?: boolean };
+    expect(r.submitted).toBe(true);
+    expect(r.transaction?.to).toBeDefined();
+    expect(r.transaction?.data).toBeDefined();
+  });
+  it('rejects an invalid vault address', async () => {
+    await expect(
+      hlCancelOrderTool.handler({ vault: 'not-an-address', perp: 0, cloid: VALID_CLOID32 }),
+    ).rejects.toThrow(/Invalid vault address/);
+  });
+  it('description states no-third-party-transfer (kills order only)', () => {
+    expect(hlCancelOrderTool.description).toMatch(/Does NOT move funds/);
+  });
+});
+
+describe('hl_cancel_order_offchain — zod schema', () => {
+  it('accepts qualified builder-dex symbol', () => {
+    expect(() =>
+      hlCancelOrderOffchainSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'xyz:GOLD',
+        cloid: VALID_CLOID32,
+      }),
+    ).not.toThrow();
+  });
+  it('accepts main-dex symbol', () => {
+    expect(() =>
+      hlCancelOrderOffchainSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        cloid: VALID_CLOID32,
+      }),
+    ).not.toThrow();
+  });
+  it('rejects empty perp', () => {
+    expect(() =>
+      hlCancelOrderOffchainSchema.parse({
+        vault: VALID_VAULT,
+        perp: '',
+        cloid: VALID_CLOID32,
+      }),
+    ).toThrow();
+  });
+  it('rejects malformed cloid', () => {
+    expect(() =>
+      hlCancelOrderOffchainSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'xyz:GOLD',
+        cloid: '0xZZZZ',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('hl_cancel_order_offchain — handler', () => {
+  it('routes qualified builder-dex symbol verbatim to HLVault.cancelOrderOffChain', async () => {
+    const r = (await hlCancelOrderOffchainTool.handler({
+      vault: VALID_VAULT,
+      perp: 'xyz:GOLD',
+      cloid: VALID_CLOID32,
+    })) as { submitted?: boolean; status?: string; response?: Record<string, unknown> };
+    expect(mockCancelOrderOffChain).toHaveBeenCalledTimes(1);
+    expect(mockCancelOrderOffChain).toHaveBeenCalledWith({
+      perp: 'xyz:GOLD',
+      cloid: VALID_CLOID32,
+    });
+    expect(r.submitted).toBe(true);
+    expect(r.status).toBe('ok');
+  });
+  it('coerces numeric-string main-dex perp to number', async () => {
+    await hlCancelOrderOffchainTool.handler({
+      vault: VALID_VAULT,
+      perp: '0',
+      cloid: VALID_CLOID32,
+    });
+    const call = mockCancelOrderOffChain.mock.calls[0]?.[0] as { perp: number | string };
+    expect(call.perp).toBe(0);
+  });
+  it('description states no-third-party-transfer', () => {
+    expect(hlCancelOrderOffchainTool.description).toMatch(/Does NOT move funds/);
+  });
+});
+
+describe('hl_place_order_raw — zod schema', () => {
+  it('accepts main-dex symbol with required fields', () => {
+    expect(() =>
+      hlPlaceOrderRawSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 100,
+        limitPxReal: 4250.5,
+      }),
+    ).not.toThrow();
+  });
+  it('accepts builder-dex symbol with all fields', () => {
+    expect(() =>
+      hlPlaceOrderRawSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'xyz:GOLD',
+        isLong: false,
+        sizeUsd: 25,
+        limitPxReal: 2310.5,
+        tif: 'Alo',
+        reduceOnly: true,
+        cloid: VALID_CLOID32,
+      }),
+    ).not.toThrow();
+  });
+  it('defaults tif=Ioc and reduceOnly=false', () => {
+    const parsed = hlPlaceOrderRawSchema.parse({
+      vault: VALID_VAULT,
+      perp: 'BTC',
+      isLong: true,
+      sizeUsd: 100,
+      limitPxReal: 60_000,
+    });
+    expect(parsed.tif).toBe('Ioc');
+    expect(parsed.reduceOnly).toBe(false);
+  });
+  it('rejects unknown tif', () => {
+    expect(() =>
+      hlPlaceOrderRawSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 10,
+        limitPxReal: 100,
+        tif: 'FOK' as 'Ioc',
+      }),
+    ).toThrow();
+  });
+  it('rejects non-positive sizeUsd', () => {
+    expect(() =>
+      hlPlaceOrderRawSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 0,
+        limitPxReal: 100,
+      }),
+    ).toThrow();
+  });
+  it('rejects non-positive limitPxReal', () => {
+    expect(() =>
+      hlPlaceOrderRawSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 10,
+        limitPxReal: -1,
+      }),
+    ).toThrow();
+  });
+  it('rejects malformed cloid when provided', () => {
+    expect(() =>
+      hlPlaceOrderRawSchema.parse({
+        vault: VALID_VAULT,
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 10,
+        limitPxReal: 100,
+        cloid: '0xbad',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('hl_place_order_raw — handler', () => {
+  it('routes main-dex symbol to HLVault.placeOrder (on-chain)', async () => {
+    const r = (await hlPlaceOrderRawTool.handler({
+      vault: VALID_VAULT,
+      perp: 'ETH',
+      isLong: true,
+      sizeUsd: 250,
+      limitPxReal: 4000,
+      tif: 'Gtc',
+      reduceOnly: false,
+    })) as { kind?: string; transaction?: { to?: string; data?: string } };
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(mockPlaceOrderOffChain).not.toHaveBeenCalled();
+    const call = mockPlaceOrder.mock.calls[0]?.[0] as {
+      perp: string | number;
+      isLong: boolean;
+      sizeUsd: number;
+      limitPxReal: number;
+      tif: number;
+      reduceOnly: boolean;
+    };
+    expect(call.perp).toBe('ETH');
+    expect(call.isLong).toBe(true);
+    expect(call.sizeUsd).toBe(250);
+    expect(call.limitPxReal).toBe(4000);
+    // Tool maps zod-string 'Gtc' → ORDER_TIF.GTC integer constant (2)
+    // before forwarding to the SDK's `placeOrder` (which expects the int).
+    expect(call.tif).toBe(2);
+    expect(r.kind).toBe('evmTx');
+    expect(r.transaction?.to).toBeDefined();
+  });
+
+  it('routes numeric perp to HLVault.placeOrder', async () => {
+    await hlPlaceOrderRawTool.handler({
+      vault: VALID_VAULT,
+      perp: 0,
+      isLong: true,
+      sizeUsd: 100,
+      limitPxReal: 60_000,
+    });
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+    const call = mockPlaceOrder.mock.calls[0]?.[0] as { perp: number };
+    expect(call.perp).toBe(0);
+  });
+
+  it('routes builder-dex symbol to HLVault.placeOrderOffChain (off-chain)', async () => {
+    const r = (await hlPlaceOrderRawTool.handler({
+      vault: VALID_VAULT,
+      perp: 'xyz:GOLD',
+      isLong: false,
+      sizeUsd: 50,
+      limitPxReal: 2310.5,
+      tif: 'Alo',
+      reduceOnly: false,
+      cloid: VALID_CLOID32,
+    })) as { kind?: string; status?: string; response?: Record<string, unknown> };
+    expect(mockPlaceOrderOffChain).toHaveBeenCalledTimes(1);
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockPlaceOrderOffChain).toHaveBeenCalledWith({
+      perp: 'xyz:GOLD',
+      isLong: false,
+      sizeUsd: 50,
+      limitPxReal: 2310.5,
+      tif: 'Alo',
+      reduceOnly: false,
+      cloid: VALID_CLOID32,
+    });
+    expect(r.kind).toBe('hlExchange');
+    expect(r.status).toBe('ok');
+  });
+
+  it('rejects an invalid vault address', async () => {
+    await expect(
+      hlPlaceOrderRawTool.handler({
+        vault: 'not-an-address',
+        perp: 'ETH',
+        isLong: true,
+        sizeUsd: 10,
+        limitPxReal: 100,
+        tif: 'Ioc',
+        reduceOnly: false,
+      }),
+    ).rejects.toThrow(/Invalid vault address/);
+  });
+
+  it('description states no-third-party-transfer invariant', () => {
+    expect(hlPlaceOrderRawTool.description).toMatch(/Does NOT move funds/);
   });
 });

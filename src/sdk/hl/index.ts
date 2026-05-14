@@ -119,6 +119,7 @@ export {
   encodeSpotSend,
   encodeBridgeSpotToEvm,
   encodeAddApiWallet,
+  encodeSetMaxKnownBuilderDex,
 } from './coreWriter.js';
 
 export {

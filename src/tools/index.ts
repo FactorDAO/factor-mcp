@@ -97,6 +97,14 @@ import { hlCompileCloseTool } from './hl/hl-compile-close.js';
 import { hlInitializeBuilderDexTool } from './hl/hl-initialize-builder-dex.js';
 import { hlSyncPositionTool } from './hl/hl-sync-position.js';
 import { hlSettlePendingTool } from './hl/hl-settle-pending.js';
+import { hlCancelOrderTool } from './hl/hl-cancel-order.js';
+import { hlCancelOrderOffchainTool } from './hl/hl-cancel-order-offchain.js';
+import { hlPlaceOrderRawTool } from './hl/hl-place-order-raw.js';
+import { hlForceForgetCloidTool } from './hl/hl-force-forget-cloid.js';
+import { hlSetMaxKnownBuilderDexTool } from './hl/hl-set-max-known-builder-dex.js';
+import { hlSpotSendTool } from './hl/hl-spot-send.js';
+import { hlListSpotTokensTool } from './hl/hl-list-spot-tokens.js';
+import { hlListDexesTool } from './hl/hl-list-dexes.js';
 
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
@@ -195,6 +203,14 @@ export {
   hlInitializeBuilderDexTool,
   hlSyncPositionTool,
   hlSettlePendingTool,
+  hlCancelOrderTool,
+  hlCancelOrderOffchainTool,
+  hlPlaceOrderRawTool,
+  hlForceForgetCloidTool,
+  hlSetMaxKnownBuilderDexTool,
+  hlSpotSendTool,
+  hlListSpotTokensTool,
+  hlListDexesTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -287,7 +303,7 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // HyperLiquid (21)
+  // HyperLiquid (29)
   hlOpenPositionTool,
   hlClosePositionTool,
   hlSetLeverageTool,
@@ -309,6 +325,14 @@ export const allTools = [
   hlInitializeBuilderDexTool,
   hlSyncPositionTool,
   hlSettlePendingTool,
+  hlCancelOrderTool,
+  hlCancelOrderOffchainTool,
+  hlPlaceOrderRawTool,
+  hlForceForgetCloidTool,
+  hlSetMaxKnownBuilderDexTool,
+  hlSpotSendTool,
+  hlListSpotTokensTool,
+  hlListDexesTool,
 
   // Yield (1)
   pendleLpTool,
@@ -405,6 +429,14 @@ export type ToolName =
   | 'factor_hl_compile_close'
   | 'factor_hl_sync_position'
   | 'factor_hl_settle_pending'
+  | 'factor_hl_cancel_order'
+  | 'factor_hl_cancel_order_offchain'
+  | 'factor_hl_place_order_raw'
+  | 'factor_hl_force_forget_cloid'
+  | 'factor_hl_set_max_known_builder_dex'
+  | 'factor_hl_spot_send'
+  | 'factor_hl_list_spot_tokens'
+  | 'factor_hl_list_dexes'
   | 'factor_pendle_lp'
   | 'factor_flashloan'
   | 'factor_preview_transaction'

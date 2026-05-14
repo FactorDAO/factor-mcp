@@ -150,6 +150,13 @@ export const hyperLiquidPerpAdapterAbi = [
     ],
     outputs: [],
   },
+  {
+    type: 'function',
+    name: 'setMaxKnownBuilderDex',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'newMax', type: 'uint32' }],
+    outputs: [],
+  },
   // ----- view -----
   {
     type: 'function',
@@ -469,6 +476,26 @@ export function encodeAddApiWallet(
       abi: hyperLiquidPerpAdapterAbi,
       functionName: 'addApiWallet',
       args: [args.apiWallet, args.name],
+    }),
+  };
+}
+
+/// @notice Bump the on-chain ceiling for `transferUsdcBetweenLedgers`
+/// destination dex (`maxKnownBuilderDex`). Adapter gates this to OWNER
+/// only — wrap in `executeByOwner`, not `executeByManager`. This does
+/// NOT auto-update the SDK's `SUPPORTED_PERP_DEXES` whitelist — that is
+/// a separate product decision.
+export function encodeSetMaxKnownBuilderDex(
+  adapter: Address,
+  newMax: number,
+): UnsignedTx {
+  assertUint32(newMax, 'newMax');
+  return {
+    to: adapter,
+    data: encodeFunctionData({
+      abi: hyperLiquidPerpAdapterAbi,
+      functionName: 'setMaxKnownBuilderDex',
+      args: [newMax],
     }),
   };
 }
