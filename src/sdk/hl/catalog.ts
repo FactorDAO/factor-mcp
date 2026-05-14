@@ -86,36 +86,49 @@ export const SPOT_DEX_SENTINEL = 0xffffffff;
 /// Restricting this list is a PRODUCT decision, not a contract one:
 ///
 /// - `main`     — HL-operated tier-1 venue (BTC, ETH, SOL, all ~230 crypto perps).
+///                collateralToken = USDC (token 0). Default access.
 /// - `xyz`      — first HIP-3 builder dex (tier-1 third-party). 75 mixed:
-///                commodities, blue-chip stocks, FX, indices. Already
-///                initialised on the live vault since Phase 8.
-/// - `vntl`     — unlocked specifically for asset uniqueness — OPENAI,
-///                ANTHROPIC, SPACEX, MAG7, SEMIS, NUCLEAR, BIOTECH,
-///                DEFENSE, ENERGY, ROBOT — none of which exist on other
-///                dexes. Required init action documented in `HLVault.ts`.
+///                commodities, blue-chip stocks, FX, indices.
+///                collateralToken = USDC (token 0). Matches the adapter's
+///                hardcoded `token=0` on action 13 sendAsset so the vault
+///                can fund / drain xyz without a token bridge.
 ///
-/// EXCLUDED from this list (visible on HL, but the FACTOR product does
-/// NOT expose them):
-/// - `flx`, `km`, `cash`, `hyna` — duplicate main/xyz tickers with
-///   STRICTLY worse conditions (lower leverage, isolated-only,
-///   coarser lot, ghost-liquidity orderbooks with mark-price drift
-///   up to ±13% vs main). They exist as deployer promo venues; surfacing
-///   them would let users accidentally route into thin liquidity.
+/// EXCLUDED — every other HL dex. Concrete reasons:
+///
+/// - `vntl`, `flx`, `km` — `collateralToken = USDH` (token 360). Our v5
+///   adapter hardcodes `token=0` (USDC) on CoreWriter action 13. Any
+///   `sendAsset(main→vntl)` is silently dropped by HL because vntl's
+///   ledger only accepts USDH. Unlocking these dexes requires:
+///   (i)  an adapter v6 with a parametric `transferAssetBetweenLedgers`
+///        that takes a `token` argument, AND
+///   (ii) the vault acquiring USDH on its spot ledger (HL spot swap
+///        USDC → USDH).
+///   See README_HL.md §12.10 for the empirical trace + upgrade design.
+/// - `hyna` — `collateralToken = USDE` (token 235). Same blocker as
+///   above but with USDE instead of USDH.
+/// - `cash` — `collateralToken = USDT0` (token 268). Same blocker.
 /// - `para` — niche market-cap indices (BTCD, OTHERS, TOTAL2). Skipped
 ///   pending product-level decision on whether to expose.
 /// - `abcd` — empty.
 ///
-/// To expand:
-///   1. Confirm the dex's `approveBuilderFee` (or equivalent init) flow
-///      against the live vault — see [[reference-hyperliquid-builder-dex-init]].
-///   2. Add the dex name to this set + bump `MAX_KNOWN_BUILDER_DEX` on
-///      the live adapter via `executeByManager(setMaxKnownBuilderDex)`.
-///   3. Bump `maxBuilderDexIndex` on the accounting contract via
-///      `setMaxBuilderDexIndex` so NAV reads the new dex's equity.
+/// Beyond the collateral issue, the duplicated tickers on these dexes
+/// have strictly worse conditions vs main/xyz (lower leverage,
+/// isolated-only flips, coarser lot, ghost-liquidity orderbooks with
+/// mark-price drift up to ±13% vs main). So even WITH the adapter
+/// upgrade, exposing them is only valuable for unique tickers (e.g.
+/// vntl's OPENAI/ANTHROPIC/SPACEX/MAG7/SEMIS) — never for duplicates.
+///
+/// To expand later:
+///   1. Ship adapter v6 (multi-collateral cross-dex transfer).
+///   2. Bridge USDC → required token on vault spot ledger.
+///   3. Add the dex name to this set.
+///   4. Bump `MAX_KNOWN_BUILDER_DEX` on adapter via
+///      `executeByManager(setMaxKnownBuilderDex)`.
+///   5. Bump `maxBuilderDexIndex` on accounting via
+///      `setMaxBuilderDexIndex`.
 export const SUPPORTED_PERP_DEXES: ReadonlySet<string> = new Set([
   'main',
   'xyz',
-  'vntl',
 ]);
 
 /// @notice Default ceiling for builder-dex routing. The on-chain adapter

@@ -304,12 +304,14 @@ describe('HL catalog tools — chain gating', () => {
 // ---------------------------------------------------------------------------
 
 describe('hl_list_instruments — handler', () => {
-  it('returns the full unified catalog', async () => {
+  it('returns the unified catalog filtered to SUPPORTED_PERP_DEXES by default', async () => {
     const r = await hlListInstrumentsTool.handler({});
     expect(r.chainId).toBe(999);
     expect(r.count).toBeGreaterThan(0);
-    // 3 main perps + 3 xyz + 1 vntl + 1 spot (USDC filtered) = 8
-    expect(r.total).toBe(8);
+    // SUPPORTED_PERP_DEXES = {main, xyz}. vntl:VOLBET is filtered out.
+    // 3 main perps + 3 xyz + 1 spot (USDC filtered) = 7.
+    expect(r.total).toBe(7);
+    expect(r.instruments.find((i: any) => i.symbol === 'VOLBET')).toBeUndefined();
   });
 
   it('filters by type=spot', async () => {
@@ -322,10 +324,13 @@ describe('hl_list_instruments — handler', () => {
     for (const i of r.instruments) expect(i.category).toBe('commodity');
   });
 
-  it('filters by vaultTradable=false to surface unreachable builder dexes', async () => {
-    const r = await hlListInstrumentsTool.handler({ vaultTradable: false });
-    expect(r.instruments.length).toBeGreaterThan(0);
-    for (const i of r.instruments) expect(i.vaultTradable).toBe(false);
+  it('all SUPPORTED-default instruments are vaultTradable=true', async () => {
+    // With SUPPORTED_PERP_DEXES filter, only main + xyz are surfaced —
+    // both are vaultTradable=true. There is no unreachable subset to
+    // filter. Callers who want the full HL universe (incl. vntl/flx/…)
+    // pass includeUnsupportedDexes=true at the SDK layer.
+    const r = await hlListInstrumentsTool.handler({});
+    for (const i of r.instruments) expect(i.vaultTradable).toBe(true);
   });
 });
 
