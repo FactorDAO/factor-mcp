@@ -66,6 +66,7 @@ import {
 import { alignIocLimit, sizeUsdToWire, tickRound } from './tickMath.js';
 import {
   HLPreflightError,
+  HL_MIN_NOTIONAL_USD,
   HL_USDC_SPOT_TOKEN_ID,
   ORDER_TIF,
   PERP_INDEX,
@@ -923,7 +924,19 @@ export class HLVault {
   // -------------------------------------------------------------------------
 
   /// @notice Read a HIP-3 builder dex's collateral (quote) token index.
-  /// See SDK `HLVault.ts::getDexCollateralToken` for full docstring.
+  /// Each HIP-3 dex picks its own quote token at deploy time:
+  ///   - xyz:  collateralToken=0   (USDC) — matches main, no extra collateral needed
+  ///   - flx:  collateralToken=360 (USDH)
+  ///   - vntl: collateralToken=360 (USDH)
+  ///   - km:   collateralToken=360 (USDH)
+  ///   - hyna: collateralToken=235 (USDE)
+  ///   - cash: collateralToken=268 (USDT0)
+  ///
+  /// CoreWriter action 13 (`sendAsset` / `transferUsdcBetweenLedgers`) on the
+  /// FACTOR adapter is HARDCODED to `token=0` (USDC). It SILENTLY SUCCEEDS
+  /// on the EVM side but HL drops the action when src/dst collateral
+  /// tokens disagree — i.e. main→vntl with USDC fails because vntl
+  /// expects USDH. Diagnostic verified on mainnet 2026-05-14.
   public async getDexCollateralToken(dexName: string): Promise<number> {
     const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
     const res = await this.exchange.fetchImpl(baseUrl, {
@@ -939,10 +952,34 @@ export class HLVault {
     return meta.collateralToken ?? 0;
   }
 
-  /// @notice Initialise the vault's HL user-account on a HIP-3 builder
-  /// dex. See SDK `HLVault.ts::initializeBuilderDex` for the rationale
-  /// (collateral-token alignment vs. an init action), the empirical
-  /// trace, and the structured-error contract.
+  /// @notice Initialise the vault's HyperLiquid user-account on a HIP-3
+  /// builder dex so that subsequent trading / sendAsset operations
+  /// against that dex are honored by HL.
+  ///
+  /// Empirically (mainnet 2026-05-14) the missing primitive on a "fresh"
+  /// HIP-3 dex is NOT a registration action — it's collateral-token
+  /// alignment. The fix is:
+  ///
+  ///   1. Probe the dex's `collateralToken` via `metaAndAssetCtxs`.
+  ///   2. If `collateralToken == 0` (USDC), the existing on-chain
+  ///      `transferUsdcBetweenLedgers` is sufficient (xyz path).
+  ///   3. If `collateralToken != 0`, the vault must hold the matching
+  ///      spot token and CoreWriter action 13 must specify it. The
+  ///      current v5 adapter HARDCODES token=0 so cross-dex USDH/USDE/
+  ///      USDT0 funding is NOT possible on-chain without an adapter
+  ///      upgrade. This method surfaces that constraint as a structured
+  ///      error so callers can report it accurately.
+  ///   4. Additionally calls `agentEnableDexAbstraction` which is HL's
+  ///      mechanism to flag the master account as HIP-3-aware. Required
+  ///      empirically before HL accepts orders on builder-dex assets
+  ///      (otherwise orders are rejected with "User does not exist on
+  ///      this dex" or similar). One-time per vault. Charges ~$0.17
+  ///      USDC of activation gas on first call (HL's
+  ///      `activateDexAbstraction` event).
+  ///
+  /// Returns a structured report. The caller is responsible for
+  /// providing matching collateral via spot-token bridging when
+  /// `collateralToken != 0`.
   public async initializeBuilderDex(dexName: string): Promise<{
     success: boolean;
     dexName: string;
@@ -955,6 +992,7 @@ export class HLVault {
     finalAccountValue: number;
     note: string;
   }> {
+    // Step 1 — look up dex metadata.
     const dexes = await this.listDexes({ includeUnsupported: true });
     const dex = dexes.find((d) => d.name === dexName);
     if (!dex) {
@@ -971,10 +1009,15 @@ export class HLVault {
 
     const collateralToken = await this.getDexCollateralToken(dexName);
     const collateralRequiresBridge = collateralToken !== 0;
+
+    // Step 2 — current state on the dex (before any action).
     const beforeAcct = await this.readDexAccountValue(dexName);
 
-    // Probe current abstraction state — distinguish "already on" from
-    // "failed to enable". See SDK comment for the rationale.
+    // Step 3 — call agentEnableDexAbstraction (idempotent: HL no-ops if
+    // already enabled, charges fee only on first activation per dex).
+    // Probe the current abstraction state first so we can report
+    // "already on" vs. "just enabled" vs. "failed to enable" clearly,
+    // without conflating the three.
     const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
     const stateRes = await this.exchange.fetchImpl(baseUrl, {
       method: 'POST',
@@ -985,15 +1028,25 @@ export class HLVault {
       stateRes.ok ? ((await stateRes.json()) as string) : 'unknown';
 
     let abstractionEnabled = priorAbstraction === 'dexAbstraction';
+    let activationCostUsdc: number | undefined;
     if (!abstractionEnabled) {
       try {
         await this.exchange.agentEnableDexAbstraction();
         abstractionEnabled = true;
-      } catch {
+        // HL's `activateDexAbstraction` ledger event records the fee
+        // amount; we don't poll for it here to keep this method cheap.
+        // Caller can read `userNonFundingLedgerUpdates` if they care.
+        activationCostUsdc = undefined;
+      } catch (e) {
+        // Agent-not-fresh / not authorized / network / etc. Surface as
+        // note rather than failing the whole flow — the operator may
+        // still be able to use the dex even without abstraction (xyz
+        // path with `default` mode + USDC collateral).
         abstractionEnabled = false;
       }
     }
 
+    // Step 4 — poll for credit IF the on-chain path is viable (USDC dex).
     let finalAccountValue = beforeAcct;
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline && finalAccountValue === beforeAcct) {
@@ -1013,12 +1066,14 @@ export class HLVault {
       collateralToken,
       collateralRequiresBridge,
       abstractionEnabled,
+      activationCostUsdc,
       finalAccountValue,
       note,
     };
   }
 
-  /// @notice Read accountValue on a named perp dex via HL Info API.
+  /// @notice Read accountValue on a named perp dex via HL Info API. Used
+  /// by `initializeBuilderDex` polling.
   private async readDexAccountValue(dexName: string): Promise<number> {
     const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
     const r = await this.exchange.fetchImpl(baseUrl, {
@@ -1086,11 +1141,22 @@ export class HLVault {
       args.slippageBps,
     );
     const limitPxWire = toWire1e8(limitPxReal);
-    const sizeWire = sizeUsdToWire(args.sizeUsd, markReal, info.szDecimals);
+    let sizeWire = sizeUsdToWire(args.sizeUsd, markReal, info.szDecimals);
+    // Auto-bump size up by one lot if the lot-floored notional lands
+    // under HL's $10 min-notional. Same fix as openPositionOffChain —
+    // a flat sizeUsd=10 with NVDA-class assets can floor to $9.79 and
+    // CoreWriter silently drops the limitOrder action. See README §3.
+    const lotStepWire = 10n ** BigInt(8 - info.szDecimals);
+    const minNotionalWire = BigInt(Math.floor(HL_MIN_NOTIONAL_USD * 1.005 * 1e8));
+    const notionalWire = (sizeWire * limitPxWire) / 10n ** 8n;
+    if (sizeWire > 0n && notionalWire < minNotionalWire) {
+      sizeWire += lotStepWire;
+    }
     if (sizeWire <= 0n) {
+      const minNeeded = HL_MIN_NOTIONAL_USD + markReal * Number(lotStepWire) / 1e8 + 0.05;
       throw new HLPreflightError(
         'min-notional',
-        `computed sizeWire is 0 — sizeUsd ${args.sizeUsd} too small for lot step at mark ${markReal}`,
+        `sizeUsd ${args.sizeUsd} too small for ${info.coin}: lot-floor at mark ${markReal.toFixed(2)} yields $0 notional. Pass at least sizeUsd=${minNeeded.toFixed(2)}.`,
         { notionalUsd: args.sizeUsd },
       );
     }
@@ -1448,12 +1514,27 @@ export class HLVault {
       ? info.markPxReal * (1 + bandBps / 10_000)
       : info.markPxReal * (1 - bandBps / 10_000);
     const limitRounded = tickRound(limitReal, info.szDecimals);
-    const sizeRaw = args.sizeUsd / info.markPxReal;
-    // Lot size = 10^-szDecimals; round to that precision.
+    // Size = lot-floored quantity that hits sizeUsd. HL has TWO independent
+    // constraints we must clear simultaneously:
+    //   (1) lot precision: size must be a multiple of 10^-szDecimals
+    //   (2) min-notional: size × markPx must be ≥ MIN_NOTIONAL ($10)
+    // Naively flooring sizeRaw can produce a notional UNDER $10 (e.g.
+    // sizeUsd=10 at NVDA mark $233 floors to 0.042 → $9.79 notional,
+    // silently rejected with "Order must have minimum value of $10").
+    // We auto-bump to the next lot above MIN_NOTIONAL + 0.5% safety buffer.
     const lotStep = 10 ** -info.szDecimals;
-    const sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
-    if (sizeFloored <= 0) {
-      throw new HLPreflightError('min-notional', `sizeUsd ${args.sizeUsd} too small for ${args.perp} lot at mark ${info.markPxReal}`, { notionalUsd: args.sizeUsd });
+    let sizeFloored = Math.floor((args.sizeUsd / info.markPxReal) / lotStep) * lotStep;
+    const effectiveNotional = sizeFloored * info.markPxReal;
+    const minNotionalCushion = HL_MIN_NOTIONAL_USD * 1.005;
+    if (sizeFloored > 0 && effectiveNotional < minNotionalCushion) {
+      sizeFloored += lotStep;
+    }
+    if (sizeFloored <= 0 || sizeFloored * info.markPxReal < HL_MIN_NOTIONAL_USD) {
+      throw new HLPreflightError(
+        'min-notional',
+        `sizeUsd ${args.sizeUsd} too small for ${args.perp}: lot-floor at mark ${info.markPxReal.toFixed(2)} yields ${(sizeFloored * info.markPxReal).toFixed(2)} < $${HL_MIN_NOTIONAL_USD} min. Pass at least sizeUsd=${(HL_MIN_NOTIONAL_USD + info.markPxReal * lotStep + 0.05).toFixed(2)}.`,
+        { notionalUsd: args.sizeUsd },
+      );
     }
     return this.exchange.placeOrder({
       asset: info.globalAsset,
