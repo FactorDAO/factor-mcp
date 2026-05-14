@@ -95,6 +95,8 @@ import { hlResolveInstrumentTool } from './hl/hl-resolve-instrument.js';
 import { hlCompileOpenTool } from './hl/hl-compile-open.js';
 import { hlCompileCloseTool } from './hl/hl-compile-close.js';
 import { hlInitializeBuilderDexTool } from './hl/hl-initialize-builder-dex.js';
+import { hlSyncPositionTool } from './hl/hl-sync-position.js';
+import { hlSettlePendingTool } from './hl/hl-settle-pending.js';
 
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
@@ -191,6 +193,8 @@ export {
   hlCompileOpenTool,
   hlCompileCloseTool,
   hlInitializeBuilderDexTool,
+  hlSyncPositionTool,
+  hlSettlePendingTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -283,7 +287,7 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // HyperLiquid (19)
+  // HyperLiquid (21)
   hlOpenPositionTool,
   hlClosePositionTool,
   hlSetLeverageTool,
@@ -303,6 +307,8 @@ export const allTools = [
   hlCompileOpenTool,
   hlCompileCloseTool,
   hlInitializeBuilderDexTool,
+  hlSyncPositionTool,
+  hlSettlePendingTool,
 
   // Yield (1)
   pendleLpTool,
@@ -397,6 +403,8 @@ export type ToolName =
   | 'factor_hl_resolve_instrument'
   | 'factor_hl_compile_open'
   | 'factor_hl_compile_close'
+  | 'factor_hl_sync_position'
+  | 'factor_hl_settle_pending'
   | 'factor_pendle_lp'
   | 'factor_flashloan'
   | 'factor_preview_transaction'

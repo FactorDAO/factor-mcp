@@ -87,6 +87,16 @@ const mockTransferFromBuilderDex = vi.fn((_args: unknown) => ({
   data: '0xdeadcafe' as `0x${string}`,
   value: 0n,
 }));
+const mockSyncPosition = vi.fn(async (_perp: unknown) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xa11ce555' as `0x${string}`,
+  value: 0n,
+}));
+const mockSettlePending = vi.fn((_cloid: bigint) => ({
+  to: '0xVaultDeadBeef0000000000000000000000000000' as `0x${string}`,
+  data: '0xb0b1ce5e' as `0x${string}`,
+  value: 0n,
+}));
 const mockListPerps = vi.fn(async (_dex?: string) => [
   {
     index: 0,
@@ -122,6 +132,8 @@ vi.mock('../src/tools/hl/hl-vault-factory.js', () => {
       transferToBuilderDex: mockTransferToBuilderDex,
       transferFromBuilderDex: mockTransferFromBuilderDex,
       listPerps: mockListPerps,
+      syncPosition: mockSyncPosition,
+      settlePending: mockSettlePending,
     })),
   };
 });
@@ -175,6 +187,8 @@ import {
   hlTransferFromBuilderDexSchema,
 } from '../src/tools/hl/hl-transfer-from-builder-dex.js';
 import { hlListPerpsTool, hlListPerpsSchema } from '../src/tools/hl/hl-list-perps.js';
+import { hlSyncPositionTool, hlSyncPositionSchema } from '../src/tools/hl/hl-sync-position.js';
+import { hlSettlePendingTool, hlSettlePendingSchema } from '../src/tools/hl/hl-settle-pending.js';
 import { HL_MAX_SLIPPAGE_BPS, HYPEREVM_CHAIN_ID } from '../src/tools/hl/common.js';
 import { configManager } from '../src/config/index.js';
 
@@ -202,6 +216,8 @@ beforeEach(() => {
   mockTransferToBuilderDex.mockClear();
   mockTransferFromBuilderDex.mockClear();
   mockListPerps.mockClear();
+  mockSyncPosition.mockClear();
+  mockSettlePending.mockClear();
 });
 
 const VALID_VAULT = '0x1234567890AbcdEF1234567890aBcdef12345678';
@@ -221,6 +237,8 @@ const allTools = [
   hlTransferToBuilderDexTool,
   hlTransferFromBuilderDexTool,
   hlListPerpsTool,
+  hlSyncPositionTool,
+  hlSettlePendingTool,
 ];
 
 describe('HL tools — JSON Schema (MCP inputSchema)', () => {
@@ -247,8 +265,8 @@ describe('HL tools — JSON Schema (MCP inputSchema)', () => {
     });
   }
 
-  it('exactly 13 HL tools registered', () => {
-    expect(allTools.length).toBe(13);
+  it('exactly 15 HL tools registered', () => {
+    expect(allTools.length).toBe(15);
   });
 
   it('every tool name starts with factor_hl_', () => {
@@ -504,6 +522,19 @@ describe('chain id gating — HL tools reject non-HyperEVM', () => {
   });
   it('hl_list_perps throws on chain 42161', async () => {
     await expect(hlListPerpsTool.handler({})).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_sync_position throws on chain 42161', async () => {
+    await expect(
+      hlSyncPositionTool.handler({ vault: VALID_VAULT, perp: 'BTC' }),
+    ).rejects.toThrow(/HyperEVM/);
+  });
+  it('hl_settle_pending throws on chain 42161', async () => {
+    await expect(
+      hlSettlePendingTool.handler({
+        vault: VALID_VAULT,
+        cloid: '0x0123456789abcdef0123456789abcdef',
+      }),
+    ).rejects.toThrow(/HyperEVM/);
   });
 });
 
@@ -798,5 +829,143 @@ describe('HL tools invoke HLVault with the right method + args', () => {
     // the same ABI the tool used. Instead, the strong assertion is just
     // "data is non-empty and starts with 4 bytes" (i.e. a function call).
     expect((r.transaction?.data ?? '').length).toBeGreaterThan(10);
+  });
+});
+
+describe('hl_sync_position — zod schema', () => {
+  it('accepts a string symbol', () => {
+    expect(() =>
+      hlSyncPositionSchema.parse({ vault: VALID_VAULT, perp: 'BTC' }),
+    ).not.toThrow();
+  });
+  it('accepts a numeric perp index', () => {
+    expect(() =>
+      hlSyncPositionSchema.parse({ vault: VALID_VAULT, perp: 0 }),
+    ).not.toThrow();
+  });
+  it('rejects a negative perp index', () => {
+    expect(() =>
+      hlSyncPositionSchema.parse({ vault: VALID_VAULT, perp: -1 }),
+    ).toThrow();
+  });
+  it('rejects a non-integer perp index', () => {
+    expect(() =>
+      hlSyncPositionSchema.parse({ vault: VALID_VAULT, perp: 1.5 }),
+    ).toThrow();
+  });
+  it('rejects missing perp', () => {
+    expect(() => hlSyncPositionSchema.parse({ vault: VALID_VAULT })).toThrow();
+  });
+});
+
+describe('hl_settle_pending — zod schema', () => {
+  const VALID_CLOID = '0x0123456789abcdef0123456789abcdef';
+
+  it('accepts a 16-byte hex cloid', () => {
+    expect(() =>
+      hlSettlePendingSchema.parse({ vault: VALID_VAULT, cloid: VALID_CLOID }),
+    ).not.toThrow();
+  });
+  it('accepts uppercase hex', () => {
+    expect(() =>
+      hlSettlePendingSchema.parse({
+        vault: VALID_VAULT,
+        cloid: '0xABCDEF0123456789ABCDEF0123456789',
+      }),
+    ).not.toThrow();
+  });
+  it('rejects missing 0x prefix', () => {
+    expect(() =>
+      hlSettlePendingSchema.parse({
+        vault: VALID_VAULT,
+        cloid: '0123456789abcdef0123456789abcdef',
+      }),
+    ).toThrow();
+  });
+  it('rejects wrong length (too short)', () => {
+    expect(() =>
+      hlSettlePendingSchema.parse({ vault: VALID_VAULT, cloid: '0xdeadbeef' }),
+    ).toThrow();
+  });
+  it('rejects non-hex chars', () => {
+    expect(() =>
+      hlSettlePendingSchema.parse({
+        vault: VALID_VAULT,
+        cloid: '0xZZZZZZZZ0123456789abcdef01234567',
+      }),
+    ).toThrow();
+  });
+  it('rejects missing cloid', () => {
+    expect(() => hlSettlePendingSchema.parse({ vault: VALID_VAULT })).toThrow();
+  });
+});
+
+describe('hl_sync_position — handler', () => {
+  it('forwards a string symbol to HLVault.syncPosition', async () => {
+    const r = (await hlSyncPositionTool.handler({
+      vault: VALID_VAULT,
+      perp: 'BTC',
+    })) as {
+      submitted?: boolean;
+      perp?: string | number;
+      txCalldata?: { to?: string; data?: string };
+      simulationMode?: boolean;
+    };
+    expect(mockSyncPosition).toHaveBeenCalledTimes(1);
+    expect(mockSyncPosition).toHaveBeenCalledWith('BTC');
+    expect(r.submitted).toBe(true);
+    expect(r.perp).toBe('BTC');
+    expect(r.txCalldata?.to).toBeDefined();
+    expect(r.txCalldata?.data).toBeDefined();
+    expect(r.simulationMode).toBe(true);
+  });
+
+  it('forwards a numeric index to HLVault.syncPosition', async () => {
+    const r = (await hlSyncPositionTool.handler({ vault: VALID_VAULT, perp: 0 })) as {
+      submitted?: boolean;
+      perp?: number;
+    };
+    expect(mockSyncPosition).toHaveBeenCalledWith(0);
+    expect(r.submitted).toBe(true);
+    expect(r.perp).toBe(0);
+  });
+
+  it('rejects an invalid vault address', async () => {
+    await expect(
+      hlSyncPositionTool.handler({ vault: 'not-an-address', perp: 'BTC' }),
+    ).rejects.toThrow(/Invalid vault address/);
+  });
+});
+
+describe('hl_settle_pending — handler', () => {
+  const VALID_CLOID = '0x0123456789abcdef0123456789abcdef';
+
+  it('forwards the cloid as a bigint to HLVault.settlePending', async () => {
+    const r = (await hlSettlePendingTool.handler({
+      vault: VALID_VAULT,
+      cloid: VALID_CLOID,
+    })) as {
+      submitted?: boolean;
+      cloid?: string;
+      txCalldata?: { to?: string; data?: string };
+      simulationMode?: boolean;
+    };
+    expect(mockSettlePending).toHaveBeenCalledTimes(1);
+    expect(mockSettlePending).toHaveBeenCalledWith(BigInt(VALID_CLOID));
+    expect(r.submitted).toBe(true);
+    expect(r.cloid).toBe(VALID_CLOID);
+    expect(r.txCalldata?.to).toBeDefined();
+    expect(r.txCalldata?.data).toBeDefined();
+    expect(r.simulationMode).toBe(true);
+  });
+
+  it('rejects an invalid vault address', async () => {
+    await expect(
+      hlSettlePendingTool.handler({ vault: 'not-an-address', cloid: VALID_CLOID }),
+    ).rejects.toThrow(/Invalid vault address/);
+  });
+
+  it('description mentions MIN_SETTLE_DELAY_BLOCKS gate', () => {
+    expect(hlSettlePendingTool.description).toMatch(/MIN_SETTLE_DELAY_BLOCKS/);
   });
 });
