@@ -183,3 +183,17 @@ export {
   type ExecuteBatchPlanResult,
   type Operation,
 } from './batch.js';
+
+export {
+  HLVaultMetrics,
+  metrics,
+  type HLVaultMetricsOptions,
+  type HLOpenPositionDetail,
+  type HLPerDexMarginSummary,
+  type HLPositionsAggregate,
+  type HLShareMetrics,
+  type HLVaultStats,
+  type HLFillRecord,
+  type HLFundingRecord,
+  type HLRealizedPnlAggregate,
+} from './metrics.js';

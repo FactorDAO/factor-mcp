@@ -27,3 +27,8 @@ export { hlSetMaxKnownBuilderDexTool } from './hl-set-max-known-builder-dex.js';
 export { hlSpotSendTool } from './hl-spot-send.js';
 export { hlListSpotTokensTool } from './hl-list-spot-tokens.js';
 export { hlListDexesTool } from './hl-list-dexes.js';
+export { hlVaultStatsTool } from './hl-vault-stats.js';
+export { hlVaultPositionsDetailTool } from './hl-vault-positions-detail.js';
+export { hlVaultFillsTool } from './hl-vault-fills.js';
+export { hlVaultFundingTool } from './hl-vault-funding.js';
+export { hlVaultRealizedPnlTool } from './hl-vault-realized-pnl.js';

@@ -105,6 +105,11 @@ import { hlSetMaxKnownBuilderDexTool } from './hl/hl-set-max-known-builder-dex.j
 import { hlSpotSendTool } from './hl/hl-spot-send.js';
 import { hlListSpotTokensTool } from './hl/hl-list-spot-tokens.js';
 import { hlListDexesTool } from './hl/hl-list-dexes.js';
+import { hlVaultStatsTool } from './hl/hl-vault-stats.js';
+import { hlVaultPositionsDetailTool } from './hl/hl-vault-positions-detail.js';
+import { hlVaultFillsTool } from './hl/hl-vault-fills.js';
+import { hlVaultFundingTool } from './hl/hl-vault-funding.js';
+import { hlVaultRealizedPnlTool } from './hl/hl-vault-realized-pnl.js';
 
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
@@ -211,6 +216,11 @@ export {
   hlSpotSendTool,
   hlListSpotTokensTool,
   hlListDexesTool,
+  hlVaultStatsTool,
+  hlVaultPositionsDetailTool,
+  hlVaultFillsTool,
+  hlVaultFundingTool,
+  hlVaultRealizedPnlTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -303,7 +313,7 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // HyperLiquid (29)
+  // HyperLiquid (34)
   hlOpenPositionTool,
   hlClosePositionTool,
   hlSetLeverageTool,
@@ -333,6 +343,11 @@ export const allTools = [
   hlSpotSendTool,
   hlListSpotTokensTool,
   hlListDexesTool,
+  hlVaultStatsTool,
+  hlVaultPositionsDetailTool,
+  hlVaultFillsTool,
+  hlVaultFundingTool,
+  hlVaultRealizedPnlTool,
 
   // Yield (1)
   pendleLpTool,

@@ -22,7 +22,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { configManager } from '../../config/index.js';
 import { getPrivateKey } from '../../wallet/key-manager.js';
 import { WalletError, VaultError } from '../../utils/errors.js';
-import { HLVault } from '../../sdk/hl/index.js';
+import { HLVault, HLVaultMetrics } from '../../sdk/hl/index.js';
 
 /**
  * HyperEVM mainnet (chain 999). Defined locally because the shared
@@ -109,4 +109,24 @@ export function buildHlVault(
     client,
     managerSigner,
   });
+}
+
+/**
+ * Build a read-only `HLVaultMetrics` instance bound to the requested
+ * vault. Always uses `requireSigner: false` — the metrics surface is
+ * pure-read and we don't want analytics tools to force a wallet prompt.
+ *
+ * Returns both the metrics class and the shared `publicClient` so callers
+ * can reuse it for additional on-chain reads (avoids a second HTTP
+ * connection per request).
+ */
+export function buildHlVaultMetrics(vaultAddress: Address): {
+  metrics: HLVaultMetrics;
+  vault: HLVault;
+  client: PublicClient;
+} {
+  const client = buildHlPublicClient();
+  const vault = buildHlVault(vaultAddress, { requireSigner: false });
+  const metrics = HLVaultMetrics.create(vault, { client });
+  return { metrics, vault, client };
 }
