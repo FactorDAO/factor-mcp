@@ -1,10 +1,13 @@
 import { z } from 'zod';
-import { isAddress, type Address } from 'viem';
+import { encodeFunctionData, isAddress, type Address } from 'viem';
+import { studioProV1ABI } from '@factordao/contracts';
 import { configManager } from '../../config/index.js';
 import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import type { SendTransactionParams } from '@factordao/sdk';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+import { encodeAddApiWallet } from '../../sdk/hl/coreWriter.js';
+import { HL_ADDRESSES_999 } from '../../sdk/hl/HLVault.js';
 
 const slotEnum = z.enum(['primary', 'risk', 'backup', '']);
 
@@ -51,11 +54,22 @@ export const hlAddApiWalletTool = {
     const agent = validated.agentEoa as Address;
 
     try {
-      // TODO: wire to HLVault.ensureAgent({ agent, slotName }) or the addApiWallet wrapper —
-      // CoreWriter action 9 encoded through the HL adapter.
+      // The HLVault.ensureAgent() helper only registers the SDK's own
+      // `agentSigner.address`. The MCP tool exposes an arbitrary
+      // `agentEoa`, so we encode the addApiWallet block directly via the
+      // SDK's `encodeAddApiWallet` and wrap it in `executeByManager` against
+      // the studioProV1 ABI — matching what HLVault would have produced.
+      const innerBlock = encodeAddApiWallet(HL_ADDRESSES_999.adapter, {
+        apiWallet: agent,
+        name: validated.slotName,
+      });
       const sendTx: SendTransactionParams = {
         to: vault,
-        data: '0x' as `0x${string}`,
+        data: encodeFunctionData({
+          abi: studioProV1ABI,
+          functionName: 'executeByManager',
+          args: [[innerBlock.to], [innerBlock.data]],
+        }),
       };
 
       const txParams: TransactionParams = {
@@ -78,7 +92,6 @@ export const hlAddApiWalletTool = {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
           },
-          todo: 'wire to HLVault.ensureAgent — SDK HL module not yet exported',
         };
       }
 
@@ -92,7 +105,6 @@ export const hlAddApiWalletTool = {
         agentEoa: agent,
         slotName: validated.slotName,
         transactionHash: result.hash,
-        todo: 'wire to HLVault.ensureAgent — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError) throw error;

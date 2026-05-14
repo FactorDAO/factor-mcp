@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { isAddress } from 'viem';
+import { isAddress, type Address } from 'viem';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 export const hlGetPositionsSchema = z.object({
   vault: z.string(),
@@ -23,7 +24,6 @@ export interface HlPositionsResult {
   vault: string;
   chainId: typeof HYPEREVM_CHAIN_ID;
   positions: HlPositionView[];
-  todo?: string;
 }
 
 export const hlGetPositionsTool = {
@@ -43,15 +43,50 @@ export const hlGetPositionsTool = {
     assertHyperEvmChain();
 
     try {
-      // TODO: wire to HLVault.getPositions() — iterates active perps via the
-      // HL info API and `HLPosition` precompile reads.
+      // Read-only — don't force wallet.
+      const hlVault = buildHlVault(validated.vault as Address, {
+        requireSigner: false,
+      });
+      const raw = await hlVault.getPositions();
+
+      // Skip empty positions (szi==0) — they're stale entries the adapter
+      // should `syncPosition` away. Map perp index back to a stringified
+      // identifier; we keep it as the numeric index (no reverse lookup of
+      // PERP_INDEX is exposed and the SDK accepts both shapes).
       const positions: HlPositionView[] = [];
+      for (const { perp, position } of raw) {
+        if (position.szi === 0n) continue;
+        const isLong = position.szi > 0n;
+        const absSzi = isLong ? position.szi : -position.szi;
+        // entryPrice = entryNtl / |szi|, expressed as a 6-dec float string.
+        // (entryNtl and szi are both signed/positive bigints here.)
+        let entryPrice = '0';
+        if (absSzi > 0n) {
+          // entryNtl is 6-dec USDC; szi is in 10^szDecimals contract units.
+          // We surface a best-effort raw ratio — full price normalization
+          // requires `perpAssetInfo.szDecimals` which is fetched per call.
+          // Caller can use `getPerpAssetInfo` separately if they need the
+          // exact float price.
+          entryPrice = (Number(position.entryNtl) / Number(absSzi)).toString();
+        }
+        positions.push({
+          perp: String(perp),
+          isLong,
+          sizeWei: position.szi.toString(),
+          entryPrice,
+          leverage: position.leverage,
+          mode: position.isIsolated ? 'isolated' : 'cross',
+          // Unrealized PnL is not part of the HL precompile `HLPosition`
+          // struct; surfacing it requires a mark-price read + sign math.
+          // For the MCP view we report '0' so the shape stays stable.
+          unrealizedPnl: '0',
+        });
+      }
 
       return {
         vault: validated.vault,
         chainId: HYPEREVM_CHAIN_ID,
         positions,
-        todo: 'wire to HLVault.getPositions — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError) throw error;

@@ -10,8 +10,10 @@ import { VaultError } from '../../utils/errors.js';
 /** HyperEVM mainnet chain id — the only network the HL tools support. */
 export const HYPEREVM_CHAIN_ID = 999;
 
-/** SDK adapter's max slippage cap (mirrors HL_MAX_SLIPPAGE_BPS in sdk-studio/hl/types.ts). */
-export const HL_MAX_SLIPPAGE_BPS = 3000;
+/** SDK adapter's max slippage cap. Re-exported from the local HL SDK
+ * adapter (`src/sdk/hl/types.ts`) so this stays in lockstep with the
+ * on-chain HL adapter's MAX_SLIPPAGE_BPS without a hand-maintained copy. */
+export { HL_MAX_SLIPPAGE_BPS } from '../../sdk/hl/index.js';
 
 /**
  * Throw `VaultError` if the current request is not on HyperEVM (chain 999).

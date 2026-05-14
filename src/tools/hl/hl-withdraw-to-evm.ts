@@ -5,6 +5,7 @@ import { sendTransaction, estimateGas, type TransactionParams } from '../../wall
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import type { SendTransactionParams } from '@factordao/sdk';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 export const hlWithdrawToEvmSchema = z.object({
   vault: z.string(),
@@ -41,15 +42,15 @@ export const hlWithdrawToEvmTool = {
     const vault = validated.vault as Address;
 
     try {
-      // TODO: wire to HLVault.withdrawToEvm({ usdcAmountFloat }) — composite perp→spot→EVM batch.
-      const sendTx: SendTransactionParams = {
-        to: vault,
-        data: '0x' as `0x${string}`,
-      };
+      const hlVault = buildHlVault(vault, { password: validated.password });
+      const sendTx: SendTransactionParams = hlVault.withdrawToEvm(
+        validated.usdcAmountFloat.toString(),
+      );
 
       const txParams: TransactionParams = {
         to: sendTx.to as Address,
         data: sendTx.data as `0x${string}`,
+        value: sendTx.value,
       };
 
       if (configManager.isSimulationMode()) {
@@ -66,7 +67,6 @@ export const hlWithdrawToEvmTool = {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
           },
-          todo: 'wire to HLVault.withdrawToEvm — SDK HL module not yet exported',
         };
       }
 
@@ -79,7 +79,6 @@ export const hlWithdrawToEvmTool = {
         vault,
         usdcAmountFloat: validated.usdcAmountFloat,
         transactionHash: result.hash,
-        todo: 'wire to HLVault.withdrawToEvm — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError) throw error;

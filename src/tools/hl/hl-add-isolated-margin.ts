@@ -1,13 +1,15 @@
 import { z } from 'zod';
-import { isAddress } from 'viem';
+import { isAddress, type Address } from 'viem';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain, type OffChainHlResult } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 export const hlAddIsolatedMarginSchema = z.object({
   vault: z.string(),
   perp: z.string().min(1),
   isLong: z.boolean(),
   deltaUsd: z.number(),
+  password: z.string().optional(),
 });
 
 export type HlAddIsolatedMarginInput = z.infer<typeof hlAddIsolatedMarginSchema>;
@@ -26,6 +28,7 @@ export const hlAddIsolatedMarginTool = {
         type: 'number',
         description: 'USD margin delta — positive to add, negative to withdraw.',
       },
+      password: { type: 'string', description: 'Wallet password if encrypted.' },
     },
     required: ['vault', 'perp', 'isLong', 'deltaUsd'],
   },
@@ -36,7 +39,14 @@ export const hlAddIsolatedMarginTool = {
     assertHyperEvmChain();
 
     try {
-      // TODO: wire to HLVault.addIsolatedMargin({ perp, isLong, deltaUsd }) — agent-signed EIP-712.
+      const hlVault = buildHlVault(validated.vault as Address, {
+        password: validated.password,
+      });
+      const exchangeResponse = await hlVault.addIsolatedMargin(
+        validated.perp,
+        validated.isLong,
+        validated.deltaUsd,
+      );
       return {
         submitted: true,
         txHash: 'off-chain-hl-action',
@@ -47,8 +57,8 @@ export const hlAddIsolatedMarginTool = {
           perp: validated.perp,
           isLong: validated.isLong,
           deltaUsd: validated.deltaUsd,
+          exchangeResponse: exchangeResponse as unknown as Record<string, unknown>,
         },
-        todo: 'wire to HLVault.addIsolatedMargin — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError) throw error;

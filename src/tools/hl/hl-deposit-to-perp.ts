@@ -5,6 +5,7 @@ import { sendTransaction, estimateGas, type TransactionParams } from '../../wall
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import type { SendTransactionParams } from '@factordao/sdk';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 export const hlDepositToPerpSchema = z.object({
   vault: z.string(),
@@ -42,15 +43,16 @@ export const hlDepositToPerpTool = {
     const vault = validated.vault as Address;
 
     try {
-      // TODO: wire to HLVault.depositToPerp({ usdcAmountFloat })
-      const sendTx: SendTransactionParams = {
-        to: vault,
-        data: '0x' as `0x${string}`,
-      };
+      const hlVault = buildHlVault(vault, { password: validated.password });
+      // SDK takes a decimal string (e.g. "5.50") and converts to 6-dec USDC.
+      const sendTx: SendTransactionParams = hlVault.depositToPerp(
+        validated.usdcAmountFloat.toString(),
+      );
 
       const txParams: TransactionParams = {
         to: sendTx.to as Address,
         data: sendTx.data as `0x${string}`,
+        value: sendTx.value,
       };
 
       if (configManager.isSimulationMode()) {
@@ -67,7 +69,6 @@ export const hlDepositToPerpTool = {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
           },
-          todo: 'wire to HLVault.depositToPerp — SDK HL module not yet exported',
         };
       }
 
@@ -80,7 +81,6 @@ export const hlDepositToPerpTool = {
         vault,
         usdcAmountFloat: validated.usdcAmountFloat,
         transactionHash: result.hash,
-        todo: 'wire to HLVault.depositToPerp — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError) throw error;

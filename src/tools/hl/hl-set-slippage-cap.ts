@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { VaultError } from '../../utils/errors.js';
-import { HYPEREVM_CHAIN_ID, HL_MAX_SLIPPAGE_BPS, assertHyperEvmChain } from './common.js';
+import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+// Source the canonical constant from the local HL SDK adapter so the
+// MCP tool stays in lockstep with the on-chain adapter's MAX_SLIPPAGE_BPS.
+import { HL_MAX_SLIPPAGE_BPS as SDK_HL_MAX_SLIPPAGE_BPS } from '../../sdk/hl/index.js';
 
 export const hlSetSlippageCapSchema = z.object({
   // No inputs — purely informational. Reserved for forward-compat in case
@@ -34,8 +37,8 @@ export const hlSetSlippageCapTool = {
     }
     return {
       chainId: HYPEREVM_CHAIN_ID,
-      maxSlippageBps: HL_MAX_SLIPPAGE_BPS,
-      note: `Adapter rejects any open/close order whose slippageBps exceeds ${HL_MAX_SLIPPAGE_BPS}. Default per-call slippageBps is 1000 (10%).`,
+      maxSlippageBps: SDK_HL_MAX_SLIPPAGE_BPS,
+      note: `Adapter rejects any open/close order whose slippageBps exceeds ${SDK_HL_MAX_SLIPPAGE_BPS}. Default per-call slippageBps is 1000 (10%).`,
     };
   },
 };

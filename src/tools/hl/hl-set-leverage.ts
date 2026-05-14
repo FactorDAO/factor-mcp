@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { isAddress } from 'viem';
+import { isAddress, type Address } from 'viem';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain, type OffChainHlResult } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 const modeEnum = z.enum(['cross', 'isolated']);
 
@@ -10,6 +11,7 @@ export const hlSetLeverageSchema = z.object({
   perp: z.string().min(1),
   leverage: z.number().int().min(1).max(50),
   mode: modeEnum,
+  password: z.string().optional(),
 });
 
 export type HlSetLeverageInput = z.infer<typeof hlSetLeverageSchema>;
@@ -29,6 +31,7 @@ export const hlSetLeverageTool = {
         enum: ['cross', 'isolated'],
         description: 'Margin mode.',
       },
+      password: { type: 'string', description: 'Wallet password if encrypted.' },
     },
     required: ['vault', 'perp', 'leverage', 'mode'],
   },
@@ -38,8 +41,14 @@ export const hlSetLeverageTool = {
     assertHyperEvmChain();
 
     try {
-      // TODO: wire to HLVault.setLeverage({ perp, leverage, mode }) — agent-signed EIP-712
-      // which POSTs to https://api.hyperliquid.xyz/exchange.
+      const hlVault = buildHlVault(validated.vault as Address, {
+        password: validated.password,
+      });
+      const exchangeResponse = await hlVault.setLeverage(
+        validated.perp,
+        validated.leverage,
+        validated.mode,
+      );
 
       return {
         submitted: true,
@@ -51,8 +60,8 @@ export const hlSetLeverageTool = {
           perp: validated.perp,
           leverage: validated.leverage,
           mode: validated.mode,
+          exchangeResponse: exchangeResponse as unknown as Record<string, unknown>,
         },
-        todo: 'wire to HLVault.setLeverage — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError) throw error;

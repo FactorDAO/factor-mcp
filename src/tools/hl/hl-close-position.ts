@@ -5,6 +5,7 @@ import { sendTransaction, estimateGas, type TransactionParams } from '../../wall
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
 import type { SendTransactionParams } from '@factordao/sdk';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 export const hlClosePositionSchema = z.object({
   vault: z.string(),
@@ -44,15 +45,17 @@ export const hlClosePositionTool = {
     const slippageBps = validated.slippageBps ?? 1000;
 
     try {
-      // TODO: wire to HLVault.closePosition({ perp, sizeUsd, slippageBps, reduceOnly: true })
-      const sendTx: SendTransactionParams = {
-        to: vault,
-        data: '0x' as `0x${string}`,
-      };
+      const hlVault = buildHlVault(vault, { password: validated.password });
+      const sendTx: SendTransactionParams = await hlVault.closePosition({
+        perp: validated.perp,
+        sizeUsd: validated.sizeUsd,
+        slippageBps,
+      });
 
       const txParams: TransactionParams = {
         to: sendTx.to as Address,
         data: sendTx.data as `0x${string}`,
+        value: sendTx.value,
       };
 
       if (configManager.isSimulationMode()) {
@@ -71,7 +74,6 @@ export const hlClosePositionTool = {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
           },
-          todo: 'wire to HLVault.closePosition — SDK HL module not yet exported',
           note: 'Simulation mode - transaction was not broadcast.',
         };
       }
@@ -87,7 +89,6 @@ export const hlClosePositionTool = {
         sizeUsd: validated.sizeUsd,
         slippageBps,
         transactionHash: result.hash,
-        todo: 'wire to HLVault.closePosition — SDK HL module not yet exported',
       };
     } catch (error) {
       if (error instanceof VaultError || error instanceof WalletError) throw error;

@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { isAddress } from 'viem';
+import { isAddress, type Address } from 'viem';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
+import { buildHlVault } from './hl-vault-factory.js';
 
 export const hlGetNavSchema = z.object({
   vault: z.string(),
@@ -16,7 +17,6 @@ export interface HlNavResult {
   spotUsdc: string;      // HL spot ledger USDC, normalized to 6-dec
   perpAccountValue: string; // HL perp account equity, USDC 6-dec
   totalUsd: string;      // sum of all three, 6-dec
-  todo?: string;
 }
 
 export const hlGetNavTool = {
@@ -36,21 +36,19 @@ export const hlGetNavTool = {
     assertHyperEvmChain();
 
     try {
-      // TODO: wire to HLVault.getNav() — reads erc20 balance + HL precompiles
-      // (spotBalance for token 0, accountMarginSummary.accountValue).
-      const evmUsdc = 0n;
-      const spotUsdc = 0n;
-      const perpAccountValue = 0n;
-      const totalUsd = evmUsdc + spotUsdc + perpAccountValue;
+      // Read-only tool: don't force a wallet just to read NAV.
+      const hlVault = buildHlVault(validated.vault as Address, {
+        requireSigner: false,
+      });
+      const nav = await hlVault.getNav();
 
       return {
         vault: validated.vault,
         chainId: HYPEREVM_CHAIN_ID,
-        evmUsdc: evmUsdc.toString(),
-        spotUsdc: spotUsdc.toString(),
-        perpAccountValue: perpAccountValue.toString(),
-        totalUsd: totalUsd.toString(),
-        todo: 'wire to HLVault.getNav — SDK HL module not yet exported',
+        evmUsdc: nav.evmUsdc.toString(),
+        spotUsdc: nav.spotUsdc.toString(),
+        perpAccountValue: nav.perpEquity.toString(),
+        totalUsd: nav.totalUsdc.toString(),
       };
     } catch (error) {
       if (error instanceof VaultError) throw error;
