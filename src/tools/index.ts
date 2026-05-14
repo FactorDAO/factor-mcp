@@ -75,6 +75,18 @@ import { lpAddLiquidityTool } from './lp/lp-add-liquidity.js';
 import { lpRemoveLiquidityTool } from './lp/lp-remove-liquidity.js';
 import { lpCollectFeesTool } from './lp/lp-collect-fees.js';
 
+// HyperLiquid tools (chain 999 only)
+import { hlOpenPositionTool } from './hl/hl-open-position.js';
+import { hlClosePositionTool } from './hl/hl-close-position.js';
+import { hlSetLeverageTool } from './hl/hl-set-leverage.js';
+import { hlAddIsolatedMarginTool } from './hl/hl-add-isolated-margin.js';
+import { hlAddApiWalletTool } from './hl/hl-add-api-wallet.js';
+import { hlDepositToPerpTool } from './hl/hl-deposit-to-perp.js';
+import { hlWithdrawToEvmTool } from './hl/hl-withdraw-to-evm.js';
+import { hlGetNavTool } from './hl/hl-get-nav.js';
+import { hlGetPositionsTool } from './hl/hl-get-positions.js';
+import { hlSetSlippageCapTool } from './hl/hl-set-slippage-cap.js';
+
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
 
@@ -151,6 +163,16 @@ export {
   lpAddLiquidityTool,
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
+  hlOpenPositionTool,
+  hlClosePositionTool,
+  hlSetLeverageTool,
+  hlAddIsolatedMarginTool,
+  hlAddApiWalletTool,
+  hlDepositToPerpTool,
+  hlWithdrawToEvmTool,
+  hlGetNavTool,
+  hlGetPositionsTool,
+  hlSetSlippageCapTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -243,6 +265,18 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
+  // HyperLiquid (10)
+  hlOpenPositionTool,
+  hlClosePositionTool,
+  hlSetLeverageTool,
+  hlAddIsolatedMarginTool,
+  hlAddApiWalletTool,
+  hlDepositToPerpTool,
+  hlWithdrawToEvmTool,
+  hlGetNavTool,
+  hlGetPositionsTool,
+  hlSetSlippageCapTool,
+
   // Yield (1)
   pendleLpTool,
 
@@ -318,6 +352,16 @@ export type ToolName =
   | 'factor_lp_add_liquidity'
   | 'factor_lp_remove_liquidity'
   | 'factor_lp_collect_fees'
+  | 'factor_hl_open_position'
+  | 'factor_hl_close_position'
+  | 'factor_hl_set_leverage'
+  | 'factor_hl_add_isolated_margin'
+  | 'factor_hl_add_api_wallet'
+  | 'factor_hl_deposit_to_perp'
+  | 'factor_hl_withdraw_to_evm'
+  | 'factor_hl_get_nav'
+  | 'factor_hl_get_positions'
+  | 'factor_hl_set_slippage_cap'
   | 'factor_pendle_lp'
   | 'factor_flashloan'
   | 'factor_preview_transaction'
