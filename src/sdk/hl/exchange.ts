@@ -104,11 +104,41 @@ export interface CancelByCloidAction {
   cancels: Array<{ asset: number; cloid: string }>;
 }
 
+/// @notice Enable HIP-3 builder-dex abstraction for the agent's master
+/// account. L1-signed action. Empirically verified on mainnet 2026-05-14
+/// (factor-sdk-studio side). Mirror of the SDK action — see SDK
+/// `exchange.ts` for the full docstring + caveats around the LEGACY
+/// `dexAbstraction` mode it puts the master into.
+export interface AgentEnableDexAbstractionAction {
+  type: 'agentEnableDexAbstraction';
+}
+
+/// @notice Set agent's master abstraction mode (L1-signed).
+export interface AgentSetAbstractionAction {
+  type: 'agentSetAbstraction';
+  abstraction: 'u' | 'p' | 'i';
+}
+
+/// @notice User-signed approveBuilderFee. REJECTED for vault accounts on
+/// mainnet — exposed for parity with the SDK. Use
+/// `agentEnableDexAbstraction` for the vault HIP-3 init flow.
+export interface ApproveBuilderFeeAction {
+  type: 'approveBuilderFee';
+  builder: Address;
+  maxFeeRate: string;
+  nonce: number;
+  hyperliquidChain?: 'Mainnet' | 'Testnet';
+  signatureChainId?: Hex;
+}
+
 export type HlExchangeAction =
   | UpdateLeverageAction
   | UpdateIsolatedMarginAction
   | OrderAction
-  | CancelByCloidAction;
+  | CancelByCloidAction
+  | AgentEnableDexAbstractionAction
+  | AgentSetAbstractionAction
+  | ApproveBuilderFeeAction;
 
 // ---------------------------------------------------------------------------
 // EIP-712 helpers
@@ -195,6 +225,21 @@ function canonicalizeAction(a: HlExchangeAction): unknown {
         isBuy: a.isBuy,
         ntli: a.ntli,
       };
+    }
+    case 'agentEnableDexAbstraction': {
+      return { type: a.type };
+    }
+    case 'agentSetAbstraction': {
+      return { type: a.type, abstraction: a.abstraction };
+    }
+    case 'approveBuilderFee': {
+      const out: Record<string, unknown> = { type: a.type };
+      if (a.hyperliquidChain !== undefined) out.hyperliquidChain = a.hyperliquidChain;
+      if (a.signatureChainId !== undefined) out.signatureChainId = a.signatureChainId;
+      out.maxFeeRate = a.maxFeeRate;
+      out.builder = a.builder;
+      out.nonce = a.nonce;
+      return out;
     }
     default: {
       // Exhaustiveness: TS will surface a missing case here at compile time.
@@ -402,6 +447,82 @@ export class HLExchangeClient {
       grouping: 'na',
     };
     return this.send(action);
+  }
+
+  /// @notice Enable HIP-3 builder-dex abstraction for the agent's master
+  /// account. See SDK `exchange.ts::agentEnableDexAbstraction` for full
+  /// caveats about LEGACY `dexAbstraction` mode.
+  public async agentEnableDexAbstraction(): Promise<HlExchangeResponse> {
+    const action: AgentEnableDexAbstractionAction = { type: 'agentEnableDexAbstraction' };
+    return this.send(action);
+  }
+
+  /// @notice Set master abstraction mode (u/p/i). Many transitions return
+  /// "Abstraction transition not allowed"; see SDK for the allowed graph.
+  public async agentSetAbstraction(abstraction: 'u' | 'p' | 'i'): Promise<HlExchangeResponse> {
+    const action: AgentSetAbstractionAction = { type: 'agentSetAbstraction', abstraction };
+    return this.send(action);
+  }
+
+  /// @notice Approve a builder address to charge fees. REJECTED for vault
+  /// accounts — exposed for parity. Use `agentEnableDexAbstraction` for
+  /// HIP-3 builder-dex init flows.
+  public async approveBuilderFee(args: {
+    builder: Address;
+    maxFeeRate: string;
+  }): Promise<HlExchangeResponse> {
+    const nonce = this.nextNonce();
+    const action: ApproveBuilderFeeAction = {
+      type: 'approveBuilderFee',
+      builder: args.builder,
+      maxFeeRate: args.maxFeeRate,
+      nonce,
+      hyperliquidChain: this.isTestnet ? 'Testnet' : 'Mainnet',
+      signatureChainId: '0x66eee' as Hex,
+    };
+    const sigHex = await this.agent.signTypedData({
+      domain: {
+        name: 'HyperliquidSignTransaction',
+        version: '1',
+        chainId: 421614,
+        verifyingContract: '0x0000000000000000000000000000000000000000',
+      },
+      types: {
+        'HyperliquidTransaction:ApproveBuilderFee': [
+          { name: 'hyperliquidChain', type: 'string' },
+          { name: 'maxFeeRate', type: 'string' },
+          { name: 'builder', type: 'address' },
+          { name: 'nonce', type: 'uint64' },
+        ],
+      },
+      primaryType: 'HyperliquidTransaction:ApproveBuilderFee',
+      message: {
+        hyperliquidChain: action.hyperliquidChain!,
+        maxFeeRate: action.maxFeeRate,
+        builder: action.builder,
+        nonce: BigInt(action.nonce),
+      },
+    });
+    const signature = splitSignature(sigHex);
+    const envelope: SignedHlAction<ApproveBuilderFeeAction> = {
+      action,
+      signature,
+      nonce,
+    };
+    const res = await this.fetchImpl(this.endpointUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HL exchange ${res.status} ${res.statusText}: ${text.slice(0, 256)}`);
+    }
+    const parsed = JSON.parse(text) as HlExchangeResponse;
+    if (parsed.status === 'err') {
+      throw new Error(`HL exchange rejected approveBuilderFee: ${parsed.response}`);
+    }
+    return parsed;
   }
 
   /// @notice Cancel by client order id (off-chain).

@@ -94,6 +94,7 @@ import { hlSearchInstrumentTool } from './hl/hl-search-instrument.js';
 import { hlResolveInstrumentTool } from './hl/hl-resolve-instrument.js';
 import { hlCompileOpenTool } from './hl/hl-compile-open.js';
 import { hlCompileCloseTool } from './hl/hl-compile-close.js';
+import { hlInitializeBuilderDexTool } from './hl/hl-initialize-builder-dex.js';
 
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
@@ -189,6 +190,7 @@ export {
   hlResolveInstrumentTool,
   hlCompileOpenTool,
   hlCompileCloseTool,
+  hlInitializeBuilderDexTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -281,7 +283,7 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
-  // HyperLiquid (18)
+  // HyperLiquid (19)
   hlOpenPositionTool,
   hlClosePositionTool,
   hlSetLeverageTool,
@@ -300,6 +302,7 @@ export const allTools = [
   hlResolveInstrumentTool,
   hlCompileOpenTool,
   hlCompileCloseTool,
+  hlInitializeBuilderDexTool,
 
   // Yield (1)
   pendleLpTool,

@@ -918,6 +918,119 @@ export class HLVault {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // HIP-3 builder-dex user-account initialisation
+  // -------------------------------------------------------------------------
+
+  /// @notice Read a HIP-3 builder dex's collateral (quote) token index.
+  /// See SDK `HLVault.ts::getDexCollateralToken` for full docstring.
+  public async getDexCollateralToken(dexName: string): Promise<number> {
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const res = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'metaAndAssetCtxs', dex: dexName }),
+    });
+    if (!res.ok) {
+      throw new Error(`HL info metaAndAssetCtxs(${dexName}) failed: ${res.status}`);
+    }
+    const parsed = (await res.json()) as [{ collateralToken?: number }, unknown];
+    const meta = Array.isArray(parsed) ? parsed[0] : (parsed as { collateralToken?: number });
+    return meta.collateralToken ?? 0;
+  }
+
+  /// @notice Initialise the vault's HL user-account on a HIP-3 builder
+  /// dex. See SDK `HLVault.ts::initializeBuilderDex` for the rationale
+  /// (collateral-token alignment vs. an init action), the empirical
+  /// trace, and the structured-error contract.
+  public async initializeBuilderDex(dexName: string): Promise<{
+    success: boolean;
+    dexName: string;
+    dexIndex: number;
+    deployer?: string;
+    collateralToken: number;
+    collateralRequiresBridge: boolean;
+    abstractionEnabled: boolean;
+    activationCostUsdc?: number;
+    finalAccountValue: number;
+    note: string;
+  }> {
+    const dexes = await this.listDexes({ includeUnsupported: true });
+    const dex = dexes.find((d) => d.name === dexName);
+    if (!dex) {
+      throw new HLPreflightError('unknown-perp', `unknown HL perp dex: ${dexName}`, {
+        perp: dexName,
+      });
+    }
+    if (dex.type === 'main') {
+      throw new HLPreflightError(
+        'invalid-input',
+        'initializeBuilderDex is not applicable to the main dex',
+      );
+    }
+
+    const collateralToken = await this.getDexCollateralToken(dexName);
+    const collateralRequiresBridge = collateralToken !== 0;
+    const beforeAcct = await this.readDexAccountValue(dexName);
+
+    // Probe current abstraction state — distinguish "already on" from
+    // "failed to enable". See SDK comment for the rationale.
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const stateRes = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'userAbstraction', user: this.vaultAddress }),
+    });
+    const priorAbstraction =
+      stateRes.ok ? ((await stateRes.json()) as string) : 'unknown';
+
+    let abstractionEnabled = priorAbstraction === 'dexAbstraction';
+    if (!abstractionEnabled) {
+      try {
+        await this.exchange.agentEnableDexAbstraction();
+        abstractionEnabled = true;
+      } catch {
+        abstractionEnabled = false;
+      }
+    }
+
+    let finalAccountValue = beforeAcct;
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline && finalAccountValue === beforeAcct) {
+      await new Promise((r) => setTimeout(r, 5_000));
+      finalAccountValue = await this.readDexAccountValue(dexName);
+    }
+
+    const note = collateralRequiresBridge
+      ? `Dex "${dexName}" uses non-USDC collateral (token ${collateralToken}). On-chain transferUsdcBetweenLedgers is hardcoded to USDC=0 and cannot fund this dex. The vault must acquire the matching spot token (e.g. USDH for vntl/flx/km) and a new adapter function transferAssetBetweenLedgers(token, srcDex, dstDex, amount) needs to be deployed. Until then, this dex is read-only.`
+      : `Dex "${dexName}" uses USDC collateral — standard transferToBuilderDex / transferUsdcBetweenLedgers should now credit. agentEnableDexAbstraction status: ${abstractionEnabled ? 'OK' : 'failed'}.`;
+
+    return {
+      success: !collateralRequiresBridge && abstractionEnabled,
+      dexName,
+      dexIndex: dex.index,
+      deployer: dex.deployer,
+      collateralToken,
+      collateralRequiresBridge,
+      abstractionEnabled,
+      finalAccountValue,
+      note,
+    };
+  }
+
+  /// @notice Read accountValue on a named perp dex via HL Info API.
+  private async readDexAccountValue(dexName: string): Promise<number> {
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const r = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'clearinghouseState', user: this.vaultAddress, dex: dexName }),
+    });
+    if (!r.ok) return 0;
+    const cs = (await r.json()) as { marginSummary?: { accountValue?: string } };
+    return Number(cs.marginSummary?.accountValue ?? '0');
+  }
+
   /// @notice Read the vault's balance on a specific HL perp dex
   /// (`accountValue` from `accountMarginSummary`). Useful for sizing
   /// cross-dex transfers without losing precision.

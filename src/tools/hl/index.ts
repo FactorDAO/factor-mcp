@@ -16,3 +16,4 @@ export { hlSearchInstrumentTool } from './hl-search-instrument.js';
 export { hlResolveInstrumentTool } from './hl-resolve-instrument.js';
 export { hlCompileOpenTool } from './hl-compile-open.js';
 export { hlCompileCloseTool } from './hl-compile-close.js';
+export { hlInitializeBuilderDexTool } from './hl-initialize-builder-dex.js';
