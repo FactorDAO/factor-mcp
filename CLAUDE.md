@@ -548,6 +548,13 @@ This MCP server wraps the `@factordao/sdk-studio` package:
 - `StudioProVaultStats` - Vault statistics, subgraph queries, and factory address lookups
 - `StudioProFactory` - Vault deployment and configuration validation
 - `StrategyBuilder` - Strategy composition with adapters
+- Factor MCP tracks `@factordao/sdk` and `@factordao/sdk-studio` via the npm
+  `pro-beta` dist-tag, not `latest`. The lockfile should still resolve the
+  concrete package versions used in production builds; as of 2026-05-18 it
+  resolves both packages to `2.1.24`, which includes the patched Base
+  `factor_morpho_adapter_pro` (`0xF31f068CD131adFE22562c699C8b1e416142BcD3`)
+  and patched `factor_morpho_market_adapter_pro`
+  (`0x942bDd16e68c603b75d192eb0489Fb9F1eBbd54D`).
 
 ## Troubleshooting
 
