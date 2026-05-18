@@ -29,8 +29,8 @@
   "author": "Factor DAO",
   "license": "MIT",
   "dependencies": {
-    "@factordao/sdk": "2.1.23",
-    "@factordao/sdk-studio": "2.1.23",
+    "@factordao/sdk": "pro-beta",
+    "@factordao/sdk-studio": "pro-beta",
     "@factordao/vault-analytics": "^1.0.34",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^1.10.14",
