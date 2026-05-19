@@ -6,7 +6,7 @@
  * vaults shipped with empty `withdrawAssets` before this fix.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveVaultAssetLists } from '../src/tools/vault/create-vault.js';
+import { createVaultSchema, resolveVaultAssetLists } from '../src/tools/vault/create-vault.js';
 
 const USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 const WETH = '0x4200000000000000000000000000000000000006';
@@ -81,5 +81,25 @@ describe('resolveVaultAssetLists', () => {
     });
     // Should not duplicate the denominator just because case differs
     expect(r.depositAssets.filter((a) => a.toLowerCase() === USDC).length).toBe(1);
+  });
+});
+
+describe('createVaultSchema', () => {
+  it('preserves separate owner and fee receiver addresses', () => {
+    const feeReceiverAddress = '0x4b895436A4D23d963f3D6E1273AA007f41333284';
+    const ownerAddress = '0x5D938294158C6142fc56033010DC16fF0f859e91';
+
+    const parsed = createVaultSchema.parse({
+      name: 'Mandate Vault',
+      symbol: 'mVLT',
+      assetDenominatorAddress: USDC,
+      ownerAddress,
+      feeReceiverAddress,
+      managementFee: 10,
+    });
+
+    expect(parsed.ownerAddress).toBe(ownerAddress);
+    expect(parsed.feeReceiverAddress).toBe(feeReceiverAddress);
+    expect(parsed.managementFee).toBe(10);
   });
 });
