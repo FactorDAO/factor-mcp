@@ -1,10 +1,25 @@
 import { arbitrum, base, mainnet } from 'viem/chains';
-import type { Chain } from 'viem';
+import { defineChain, type Chain } from 'viem';
+
+// viem does not ship a HyperEVM definition yet, so we define it locally.
+// Chain id 999 + the canonical Hyperliquid public RPC; Alchemy also
+// hosts HL at `hyperliquid-mainnet.g.alchemy.com/v2/<KEY>`, used below.
+const hyperEvm: Chain = defineChain({
+  id: 999,
+  name: 'HyperEVM',
+  network: 'hyperevm',
+  nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://rpc.hyperliquid.xyz/evm'] },
+    public: { http: ['https://rpc.hyperliquid.xyz/evm'] },
+  },
+});
 
 export const SUPPORTED_CHAINS: Record<string, Chain> = {
   ARBITRUM_ONE: arbitrum,
   BASE: base,
   MAINNET: mainnet,
+  HYPEREVM: hyperEvm,
 };
 
 export type SupportedChainName = keyof typeof SUPPORTED_CHAINS;
@@ -27,6 +42,7 @@ const CHAIN_ID_MAP: Record<number, SupportedChainName> = {
   42161: 'ARBITRUM_ONE',
   8453: 'BASE',
   1: 'MAINNET',
+  999: 'HYPEREVM',
 };
 
 export function getChainByChainId(chainId: number): Chain {
@@ -46,6 +62,7 @@ export function getAlchemyRpcUrl(chainName: SupportedChainName, apiKey: string):
     ARBITRUM_ONE: 'arb-mainnet',
     BASE: 'base-mainnet',
     MAINNET: 'eth-mainnet',
+    HYPEREVM: 'hyperliquid-mainnet',
   };
 
   const network = alchemyNetworks[chainName];
