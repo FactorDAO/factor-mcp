@@ -89,7 +89,7 @@ export const hlTransferToBuilderDexTool = {
           vault,
           dex: validated.dex,
           usdcAmount,
-          transaction: { to: sendTx.to, data: sendTx.data, value: sendTx.value, chainId: HYPEREVM_CHAIN_ID },
+          transaction: { to: sendTx.to, data: sendTx.data, value: sendTx.value != null ? sendTx.value.toString() : "0", chainId: HYPEREVM_CHAIN_ID },
           gasEstimate: {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
