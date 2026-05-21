@@ -44,8 +44,11 @@ export const hlTransferFromBuilderDexTool = {
     if (!isAddress(validated.vault)) throw new VaultError('Invalid vault address');
     assertHyperEvmChain();
 
-    const walletName = configManager.getWalletName();
-    if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    const stateless = configManager.isStateless();
+    if (!stateless) {
+      const walletName = configManager.getWalletName();
+      if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    }
 
     const vault = validated.vault as Address;
     const usdcAmount =
@@ -54,7 +57,10 @@ export const hlTransferFromBuilderDexTool = {
         : validated.usdcAmount;
 
     try {
-      const hlVault = buildHlVault(vault, { password: validated.password });
+      const hlVault = buildHlVault(vault, {
+        password: validated.password,
+        requireSigner: !stateless,
+      });
       const sendTx: SendTransactionParams = hlVault.transferFromBuilderDex({
         dex: validated.dex,
         usdcAmount,
@@ -66,22 +72,24 @@ export const hlTransferFromBuilderDexTool = {
         value: sendTx.value,
       };
 
-      if (configManager.isSimulationMode()) {
-        const gasEstimate = await estimateGas(txParams).catch(() => ({ gasLimit: 0n, totalCostEth: '0' }));
+      if (stateless || configManager.isSimulationMode()) {
+        const gasEstimate = stateless
+          ? { gasLimit: 0n, totalCostEth: '0' }
+          : await estimateGas(txParams).catch(() => ({ gasLimit: 0n, totalCostEth: '0' }));
         return {
           success: true,
-          simulationMode: true,
+          simulationMode: !stateless,
           action: 'hl_transfer_from_builder_dex',
           chainId: HYPEREVM_CHAIN_ID,
           vault,
           dex: validated.dex,
           usdcAmount,
-          transaction: { to: sendTx.to, data: sendTx.data },
+          transaction: { to: sendTx.to, data: sendTx.data, value: sendTx.value, chainId: HYPEREVM_CHAIN_ID },
           gasEstimate: {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
           },
-          note: 'Simulation mode - transaction was not broadcast.',
+          note: stateless ? 'Stateless mode — returning calldata for agent-executor sign_and_send.' : 'Simulation mode - transaction was not broadcast.',
         };
       }
 

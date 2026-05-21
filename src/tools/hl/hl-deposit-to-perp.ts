@@ -37,13 +37,24 @@ export const hlDepositToPerpTool = {
     if (!isAddress(validated.vault)) throw new VaultError('Invalid vault address');
     assertHyperEvmChain();
 
-    const walletName = configManager.getWalletName();
-    if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    const stateless = configManager.isStateless();
+
+    if (!stateless) {
+      const walletName = configManager.getWalletName();
+      if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    }
 
     const vault = validated.vault as Address;
 
     try {
-      const hlVault = buildHlVault(vault, { password: validated.password });
+      // In stateless mode we skip the signer entirely — the SDK still wants a
+      // LocalAccount for type-narrowing but never signs on calldata-only paths.
+      // `requireSigner: false` uses the deterministic zero key, identical to
+      // what read-only tools do.
+      const hlVault = buildHlVault(vault, {
+        password: validated.password,
+        requireSigner: !stateless,
+      });
       // SDK takes a decimal string (e.g. "5.50") and converts to 6-dec USDC.
       const sendTx: SendTransactionParams = hlVault.depositToPerp(
         validated.usdcAmountFloat.toString(),
@@ -55,16 +66,18 @@ export const hlDepositToPerpTool = {
         value: sendTx.value,
       };
 
-      if (configManager.isSimulationMode()) {
-        const gasEstimate = await estimateGas(txParams).catch(() => ({ gasLimit: 0n, totalCostEth: '0' }));
+      if (stateless || configManager.isSimulationMode()) {
+        const gasEstimate = stateless
+          ? { gasLimit: 0n, totalCostEth: '0' }
+          : await estimateGas(txParams).catch(() => ({ gasLimit: 0n, totalCostEth: '0' }));
         return {
           success: true,
-          simulationMode: true,
+          simulationMode: !stateless,
           action: 'hl_deposit_to_perp',
           chainId: HYPEREVM_CHAIN_ID,
           vault,
           usdcAmountFloat: validated.usdcAmountFloat,
-          transaction: { to: sendTx.to, data: sendTx.data },
+          transaction: { to: sendTx.to, data: sendTx.data, value: sendTx.value, chainId: HYPEREVM_CHAIN_ID },
           gasEstimate: {
             gasLimit: gasEstimate.gasLimit.toString(),
             totalCostEth: gasEstimate.totalCostEth,
