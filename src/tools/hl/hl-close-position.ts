@@ -47,16 +47,59 @@ export const hlClosePositionTool = {
     if (!isAddress(validated.vault)) throw new VaultError('Invalid vault address');
     assertHyperEvmChain();
 
-    const walletName = configManager.getWalletName();
-    if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    const stateless = configManager.isStateless();
+
+    if (!stateless) {
+      const walletName = configManager.getWalletName();
+      if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    }
 
     const vault = validated.vault as Address;
     const slippageBps = validated.slippageBps ?? 1000;
+    const isBuilderDex = isBuilderDexSymbol(validated.perp);
 
     try {
+      // Stateless mode + builder-dex symbol → return UNSIGNED L1 action.
+      // The agent EOA private key lives in signing-service, not here. The
+      // executor will POST this envelope to /sign-hl-exchange and then
+      // forward the signed body to https://api.hyperliquid.xyz/exchange.
+      // See hl-open-position.ts for the symmetric routing.
+      if (stateless && isBuilderDex) {
+        const hlVault = buildHlVault(vault, {
+          password: validated.password,
+          requireSigner: false,
+        });
+        const built = await hlVault.buildClosePositionOffChainAction({
+          perp: validated.perp,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+        });
+        return {
+          success: true,
+          simulationMode: false,
+          action: 'hl_close_position',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          perp: validated.perp,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+          l1Action: {
+            requiresL1Signing: true,
+            action: built.action,
+            nonce: built.nonce,
+            vaultAddress: built.vaultAddress,
+            isTestnet: false,
+            asset: built.asset,
+            limitPxReal: built.limitPxReal,
+            sizeReal: built.sizeReal,
+            isClosingBuy: built.isClosingBuy,
+          },
+        };
+      }
+
       const hlVault = buildHlVault(vault, { password: validated.password });
 
-      if (isBuilderDexSymbol(validated.perp)) {
+      if (isBuilderDex) {
         const hlResponse = await hlVault.closePositionOffChain({
           perp: validated.perp,
           sizeUsd: validated.sizeUsd,

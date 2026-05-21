@@ -1635,6 +1635,203 @@ export class HLVault {
     });
   }
 
+  /// @notice Build an UNSIGNED HL Exchange `order` action that opens a
+  /// position on a builder-dex perp (`xyz:GOLD`, `xyz:AAPL`, …). Returns
+  /// the canonical action object plus nonce + vault address — the caller
+  /// is expected to ship this to a remote signer (typically the kairos
+  /// signing-service `/sign-hl-exchange` route) which holds the agent
+  /// private key, then POST the signed envelope to HL's exchange API.
+  ///
+  /// This is the stateless-mode equivalent of `openPositionOffChain` —
+  /// same preflight (mark resolution, min-notional, lot-floor, IOC band),
+  /// same canonical key order, but produces NO signature. Used by
+  /// factor-mcp tools when `STATELESS_MODE=true` and the SDK cannot
+  /// access a private key locally.
+  ///
+  /// The returned `action` is shaped exactly as HL expects (msgpack
+  /// canonical insertion order `{type, orders, grouping}`), so the
+  /// signing service can hash it with `connectionId(...)` and the
+  /// signature will recover to the correct agent EOA.
+  public async buildOpenPositionOffChainAction(args: {
+    perp: string; // builder-dex qualified, e.g. 'xyz:NVDA'
+    isLong: boolean;
+    sizeUsd: number;
+    slippageBps?: number;
+  }): Promise<{
+    action: {
+      type: 'order';
+      orders: Array<{
+        a: number;
+        b: boolean;
+        p: string;
+        s: string;
+        r: boolean;
+        t: { limit: { tif: 'Ioc' } };
+      }>;
+      grouping: 'na';
+    };
+    nonce: number;
+    vaultAddress: Address;
+    asset: number;
+    limitPxReal: string;
+    sizeReal: string;
+    sizeUsdEffective: number;
+    markPxReal: number;
+  }> {
+    const info = await this.resolveBuilderDex(args.perp);
+    if (info.markPxReal <= 0) {
+      throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
+    }
+    const bandBps = args.slippageBps ?? 1500;
+    const limitReal = args.isLong
+      ? info.markPxReal * (1 + bandBps / 10_000)
+      : info.markPxReal * (1 - bandBps / 10_000);
+    const limitRounded = tickRound(limitReal, info.szDecimals);
+    // Mirror of the sizing logic in `openPositionOffChain` — lot-floor +
+    // min-notional auto-bump. See that method for the rationale.
+    const lotStep = 10 ** -info.szDecimals;
+    let sizeFloored = Math.floor((args.sizeUsd / info.markPxReal) / lotStep) * lotStep;
+    const effectiveNotional = sizeFloored * info.markPxReal;
+    const minNotionalCushion = HL_MIN_NOTIONAL_USD * 1.005;
+    if (sizeFloored > 0 && effectiveNotional < minNotionalCushion) {
+      sizeFloored += lotStep;
+    }
+    if (sizeFloored <= 0 || sizeFloored * info.markPxReal < HL_MIN_NOTIONAL_USD) {
+      throw new HLPreflightError(
+        'min-notional',
+        `sizeUsd ${args.sizeUsd} too small for ${args.perp}: lot-floor at mark ${info.markPxReal.toFixed(2)} yields ${(sizeFloored * info.markPxReal).toFixed(2)} < $${HL_MIN_NOTIONAL_USD} min. Pass at least sizeUsd=${(HL_MIN_NOTIONAL_USD + info.markPxReal * lotStep + 0.05).toFixed(2)}.`,
+        { notionalUsd: args.sizeUsd },
+      );
+    }
+    const limitPxReal = String(limitRounded);
+    const sizeReal = hlFormatDecimal(sizeFloored, info.szDecimals);
+    // Canonical key order — MUST match the exchange.ts `canonicalizeAction`
+    // path so the signing service computes the same connection id.
+    const action = {
+      type: 'order' as const,
+      orders: [
+        {
+          a: info.globalAsset,
+          b: args.isLong,
+          p: limitPxReal,
+          s: sizeReal,
+          r: false,
+          t: { limit: { tif: 'Ioc' as const } },
+        },
+      ],
+      grouping: 'na' as const,
+    };
+    return {
+      action,
+      nonce: Date.now(),
+      vaultAddress: this.vaultAddress,
+      asset: info.globalAsset,
+      limitPxReal,
+      sizeReal,
+      sizeUsdEffective: sizeFloored * info.markPxReal,
+      markPxReal: info.markPxReal,
+    };
+  }
+
+  /// @notice Stateless-mode counterpart to `closePositionOffChain`. Same
+  /// flow: reads the current position via `clearinghouseState`, picks the
+  /// reduce-only side, lot-floors the size, and computes the IOC band off
+  /// the LIVE mark — but returns the unsigned action for an external
+  /// signer instead of signing locally. See
+  /// `buildOpenPositionOffChainAction` for the wider rationale.
+  public async buildClosePositionOffChainAction(args: {
+    perp: string;
+    sizeUsd: number;
+    slippageBps?: number;
+  }): Promise<{
+    action: {
+      type: 'order';
+      orders: Array<{
+        a: number;
+        b: boolean;
+        p: string;
+        s: string;
+        r: boolean;
+        t: { limit: { tif: 'Ioc' } };
+      }>;
+      grouping: 'na';
+    };
+    nonce: number;
+    vaultAddress: Address;
+    asset: number;
+    limitPxReal: string;
+    sizeReal: string;
+    isClosingBuy: boolean;
+  }> {
+    const info = await this.resolveBuilderDex(args.perp);
+    if (info.markPxReal <= 0) {
+      throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
+    }
+    const dexName = args.perp.split(':')[0];
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+    const [csRes, markRealLive] = await Promise.all([
+      this.exchange.fetchImpl(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'clearinghouseState', dex: dexName, user: this.vaultAddress }),
+      }),
+      this.getBuilderDexMarkPxReal(args.perp),
+    ]);
+    const cs = (await csRes.json()) as { assetPositions?: Array<{ position: { coin: string; szi: string } }> };
+    const pos = cs.assetPositions?.find((p) => p.position.coin === args.perp);
+    if (!pos || Number(pos.position.szi) === 0) {
+      throw new HLPreflightError('invalid-input', `no open position on ${args.perp}`, { perp: args.perp });
+    }
+    const sziAbs = Math.abs(Number(pos.position.szi));
+    const isLong = Number(pos.position.szi) > 0;
+    const bandBps = args.slippageBps ?? 1500;
+    const isClosingBuy = !isLong;
+    const limitReal = isClosingBuy
+      ? markRealLive * (1 + bandBps / 10_000)
+      : markRealLive * (1 - bandBps / 10_000);
+    const limitRounded = tickRound(limitReal, info.szDecimals);
+    const sizeRaw = args.sizeUsd / info.markPxReal;
+    const lotStep = 10 ** -info.szDecimals;
+    let sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
+    // Same heuristic-full-close as closePositionOffChain — collapse near-
+    // full closes to the actual on-chain size so we don't leave dust.
+    if (sizeFloored >= sziAbs * 0.99) {
+      sizeFloored = sziAbs;
+    }
+    if (sizeFloored <= 0) {
+      throw new HLPreflightError(
+        'min-notional',
+        `sizeUsd too small for ${args.perp} lot`,
+        { notionalUsd: args.sizeUsd },
+      );
+    }
+    const limitPxReal = String(limitRounded);
+    const sizeReal = hlFormatDecimal(sizeFloored, info.szDecimals);
+    const action = {
+      type: 'order' as const,
+      orders: [
+        {
+          a: info.globalAsset,
+          b: isClosingBuy,
+          p: limitPxReal,
+          s: sizeReal,
+          r: true,
+          t: { limit: { tif: 'Ioc' as const } },
+        },
+      ],
+      grouping: 'na' as const,
+    };
+    return {
+      action,
+      nonce: Date.now(),
+      vaultAddress: this.vaultAddress,
+      asset: info.globalAsset,
+      limitPxReal,
+      sizeReal,
+      isClosingBuy,
+    };
+  }
+
   /// @notice Cancel an order by cloid via the off-chain HL Exchange API.
   /// Used for HIP-3 builder-dex perps (xyz:GOLD, etc) which CoreWriter
   /// does not route. Main-dex callers should prefer `cancelOrder()`

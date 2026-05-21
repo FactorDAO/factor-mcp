@@ -33,7 +33,7 @@ function isBuilderDexSymbol(perp: string): boolean {
 export const hlOpenPositionTool = {
   name: 'factor_hl_open_position',
   description:
-    'Open a HyperLiquid perp position (long or short) sized in USD through a Factor vault on HyperEVM (chain 999). Main-dex symbols (BTC, ETH, ...) route on-chain via the HL adapter; HIP-3 builder-dex symbols (xyz:GOLD, xyz:BRENTOIL, xyz:COPPER, ...) route off-chain via the HL Exchange API.',
+    'Open a HyperLiquid perp position (long or short) sized in USD through a Factor vault on HyperEVM (chain 999). Main-dex symbols (BTC, ETH, ...) route on-chain via the HL adapter; HIP-3 builder-dex symbols (xyz:GOLD, xyz:BRENTOIL, xyz:COPPER, xyz:AAPL, ...) route off-chain via the HL Exchange API.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -72,20 +72,80 @@ export const hlOpenPositionTool = {
     if (!isAddress(validated.vault)) throw new VaultError('Invalid vault address');
     assertHyperEvmChain();
 
-    const walletName = configManager.getWalletName();
-    if (!walletName) {
-      throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    const stateless = configManager.isStateless();
+
+    if (!stateless) {
+      const walletName = configManager.getWalletName();
+      if (!walletName) {
+        throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+      }
     }
 
     const vault = validated.vault as Address;
     const slippageBps = validated.slippageBps ?? 1000;
     const isLong = validated.side === 'long';
+    const isBuilderDex = isBuilderDexSymbol(validated.perp);
 
     try {
+      // In stateless mode + builder-dex symbol path, we DO NOT sign locally.
+      // The HL Exchange `order` action is an HL L1 signed action — it must be
+      // signed by the agent EOA's private key which lives in the kairos
+      // signing-service keystore, not in the MCP server. We build the unsigned
+      // action here, return it inside an `l1Action` envelope, and agent-executor
+      // routes it to `signing-service /sign-hl-exchange` for signing + POSTing
+      // to https://api.hyperliquid.xyz/exchange.
+      //
+      // The 4 margin-movement tools (deposit_to_perp, withdraw_to_evm,
+      // transfer_to_builder_dex, transfer_from_builder_dex) take a different
+      // shape because they produce EVM calldata that the sponsor relays
+      // through MandateHlSponsorV2.executeAsAgent — see hl-deposit-to-perp.ts.
+      if (stateless && isBuilderDex) {
+        const hlVault = buildHlVault(vault, {
+          password: validated.password,
+          requireSigner: false,
+        });
+        const built = await hlVault.buildOpenPositionOffChainAction({
+          perp: validated.perp,
+          isLong,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+        });
+        return {
+          success: true,
+          simulationMode: false,
+          action: 'hl_open_position',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          perp: validated.perp,
+          side: validated.side,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+          // Routing envelope for agent-executor:
+          // when `requiresL1Signing` is true, the executor must call
+          // `signing-service /sign-hl-exchange` (NOT `/sign` or
+          // `/hl/exec-as-agent`) and POST the resulting envelope to
+          // https://api.hyperliquid.xyz/exchange.
+          l1Action: {
+            requiresL1Signing: true,
+            action: built.action,
+            nonce: built.nonce,
+            vaultAddress: built.vaultAddress,
+            isTestnet: false,
+            // Diagnostics — useful for audit + decisioning, not used by HL.
+            asset: built.asset,
+            limitPxReal: built.limitPxReal,
+            sizeReal: built.sizeReal,
+            sizeUsdEffective: built.sizeUsdEffective,
+            markPxReal: built.markPxReal,
+          },
+        };
+      }
+
       const hlVault = buildHlVault(vault, { password: validated.password });
 
-      // HIP-3 builder dex path — sign + post via HL Exchange API, no EVM tx.
-      if (isBuilderDexSymbol(validated.perp)) {
+      // Non-stateless builder-dex path — sign + post via HL Exchange API,
+      // no EVM tx. The SDK has the manager signer wired in this branch.
+      if (isBuilderDex) {
         const hlResponse = await hlVault.openPositionOffChain({
           perp: validated.perp,
           isLong,
