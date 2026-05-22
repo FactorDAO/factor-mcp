@@ -1733,6 +1733,46 @@ export class HLVault {
     };
   }
 
+  /// @notice Stateless-mode counterpart to `setLeverage`. Builds the
+  /// `updateLeverage` L1 action without a signer. Caller (agent-executor)
+  /// routes the returned envelope to signing-service `/sign-hl-exchange`
+  /// for signing + POSTing to `https://api.hyperliquid.xyz/exchange`.
+  public async buildSetLeverageOffChainAction(args: {
+    perp: string; // 'BTC' / 'ETH' (main) or 'xyz:NVDA' (builder dex)
+    leverage: number;
+    isCross: boolean;
+  }): Promise<{
+    action: {
+      type: 'updateLeverage';
+      asset: number;
+      isCross: boolean;
+      leverage: number;
+    };
+    nonce: number;
+    vaultAddress: Address;
+    asset: number;
+  }> {
+    if (!Number.isInteger(args.leverage) || args.leverage < 1) {
+      throw new HLPreflightError(
+        'invalid-input',
+        `buildSetLeverageOffChainAction: leverage must be a positive integer (got ${args.leverage})`,
+      );
+    }
+    const asset = await this.resolvePerp(args.perp);
+    const action = {
+      type: 'updateLeverage' as const,
+      asset,
+      isCross: args.isCross,
+      leverage: args.leverage,
+    };
+    return {
+      action,
+      nonce: Date.now(),
+      vaultAddress: this.vaultAddress,
+      asset,
+    };
+  }
+
   /// @notice Stateless-mode counterpart to `closePositionOffChain`. Same
   /// flow: reads the current position via `clearinghouseState`, picks the
   /// reduce-only side, lot-floors the size, and computes the IOC band off

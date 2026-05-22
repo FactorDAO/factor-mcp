@@ -3,6 +3,7 @@ import { isAddress, type Address } from 'viem';
 import { VaultError, SdkError } from '../../utils/errors.js';
 import { HYPEREVM_CHAIN_ID, assertHyperEvmChain, type OffChainHlResult } from './common.js';
 import { buildHlVault } from './hl-vault-factory.js';
+import { configManager } from '../../config/index.js';
 
 const modeEnum = z.enum(['cross', 'isolated']);
 
@@ -10,7 +11,11 @@ export const hlSetLeverageSchema = z.object({
   vault: z.string(),
   perp: z.string().min(1),
   leverage: z.number().int().min(1).max(50),
-  mode: modeEnum,
+  // Default to `cross` margin so the LLM doesn't have to pass it. HL's
+  // `updateLeverage` action takes a margin mode bit (`isCross`) on every
+  // call; missing the field used to ZodError out the tool silently,
+  // leaving the agent's leverage at the vault default (20×).
+  mode: modeEnum.optional().default('cross'),
   password: z.string().optional(),
 });
 
@@ -35,12 +40,48 @@ export const hlSetLeverageTool = {
     },
     required: ['vault', 'perp', 'leverage', 'mode'],
   },
-  handler: async (input: HlSetLeverageInput): Promise<OffChainHlResult> => {
+  handler: async (input: HlSetLeverageInput) => {
     const validated = hlSetLeverageSchema.parse(input);
     if (!isAddress(validated.vault)) throw new VaultError('Invalid vault address');
     assertHyperEvmChain();
 
+    const stateless = configManager.isStateless();
+    const isCross = validated.mode === 'cross';
+
     try {
+      // Stateless mode: build the L1 action with NO signer, return the
+      // unsigned envelope. agent-executor routes it via signing-service
+      // `/sign-hl-exchange`, same as the open/close stateless paths.
+      if (stateless) {
+        const hlVault = buildHlVault(validated.vault as Address, {
+          password: validated.password,
+          requireSigner: false,
+        });
+        const built = await hlVault.buildSetLeverageOffChainAction({
+          perp: validated.perp,
+          leverage: validated.leverage,
+          isCross,
+        });
+        return {
+          success: true,
+          simulationMode: false,
+          action: 'hl_set_leverage',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault: validated.vault,
+          perp: validated.perp,
+          leverage: validated.leverage,
+          mode: validated.mode,
+          l1Action: {
+            requiresL1Signing: true,
+            action: built.action,
+            nonce: built.nonce,
+            vaultAddress: built.vaultAddress,
+            isTestnet: false,
+            asset: built.asset,
+          },
+        };
+      }
+
       const hlVault = buildHlVault(validated.vault as Address, {
         password: validated.password,
       });
@@ -50,7 +91,7 @@ export const hlSetLeverageTool = {
         validated.mode,
       );
 
-      return {
+      const result: OffChainHlResult = {
         submitted: true,
         txHash: 'off-chain-hl-action',
         action: 'hl_set_leverage',
@@ -63,6 +104,7 @@ export const hlSetLeverageTool = {
           exchangeResponse: exchangeResponse as unknown as Record<string, unknown>,
         },
       };
+      return result;
     } catch (error) {
       if (error instanceof VaultError) throw error;
       throw new SdkError('Failed to submit HL setLeverage action', error);
