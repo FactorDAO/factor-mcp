@@ -27,14 +27,21 @@ import { buildHlVault } from './hl-vault-factory.js';
  * **Cannot move funds**: only deletes an entry from `pendingActions`.
  * USDC stays in the vault.
  */
-const CLOID_HEX_REGEX = /^0x[0-9a-fA-F]{32}$/;
+// Accept any 0x-prefixed hex up to 32 bytes (64 hex chars). The on-chain
+// gate is `settlePending(uint128 cloid)` so we only care about the low
+// 16 bytes (32 hex chars). HL Exchange API returns 32-byte cloids
+// (uint256 hashes from EIP-712 signing) for L1-signed orders, and our
+// CoreWriter dispatch path generates 16-byte cloids. Both should
+// round-trip through the same tool — we truncate to the low 128 bits
+// inside the handler (BigInt masks the high bits automatically).
+const CLOID_HEX_REGEX = /^0x[0-9a-fA-F]{1,64}$/;
 
 export const hlSettlePendingSchema = z.object({
   vault: z.string(),
   cloid: z
     .string()
     .regex(CLOID_HEX_REGEX)
-    .describe('Pending cloid to settle (uint128 as 16-byte hex)'),
+    .describe('Pending cloid to settle (uint128, accepts 16- or 32-byte hex)'),
   password: z.string().optional(),
 });
 
@@ -51,8 +58,8 @@ export const hlSettlePendingTool = {
       cloid: {
         type: 'string',
         description:
-          'Pending cloid to settle — uint128 encoded as 16-byte hex (0x + 32 hex chars).',
-        pattern: '^0x[0-9a-fA-F]{32}$',
+          'Pending cloid to settle — uint128 hex. Accepts 16-byte (0x + 32 hex) for CoreWriter-dispatched orders OR 32-byte (0x + 64 hex) for L1-signed orders; only the low 128 bits are used on-chain.',
+        pattern: '^0x[0-9a-fA-F]{1,64}$',
       },
       password: { type: 'string', description: 'Wallet password if encrypted.' },
     },
@@ -63,11 +70,22 @@ export const hlSettlePendingTool = {
     if (!isAddress(validated.vault)) throw new VaultError('Invalid vault address');
     assertHyperEvmChain();
 
-    const walletName = configManager.getWalletName();
-    if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    // Stateless mode: don't enforce a wallet. settle_pending is
+    // permissionless on-chain — anyone can call it; agent-executor
+    // routes the calldata through the sponsor relay.
+    const stateless = configManager.isStateless();
+    if (!stateless) {
+      const walletName = configManager.getWalletName();
+      if (!walletName) throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
+    }
 
     const vault = validated.vault as Address;
-    const cloid = BigInt(validated.cloid);
+    // Truncate to uint128 (low 128 bits) — the on-chain settlePending
+    // takes a uint128, but the LLM often passes 256-bit hashes from
+    // HL Exchange responses (orderId, etc). Masking here avoids "value
+    // out of range for uint128" reverts at the contract layer.
+    const UINT128_MASK = (1n << 128n) - 1n;
+    const cloid = BigInt(validated.cloid) & UINT128_MASK;
 
     try {
       const hlVault = buildHlVault(vault, { password: validated.password });
