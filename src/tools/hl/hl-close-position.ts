@@ -97,6 +97,38 @@ export const hlClosePositionTool = {
         };
       }
 
+      // Stateless + main perp path: build EVM calldata (CoreWriter LimitOrder
+      // action 1, reduce-only) WITHOUT a signer. agent-executor routes via
+      // MandateHlSponsorV2.executeAsAgent. No L1 signature needed for main.
+      if (stateless && !isBuilderDex) {
+        const hlVaultStateless = buildHlVault(vault, {
+          password: validated.password,
+          requireSigner: false,
+        });
+        const sendTxNoSig: SendTransactionParams = await hlVaultStateless.closePosition({
+          perp: validated.perp,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+        });
+        return {
+          success: true,
+          simulationMode: false,
+          action: 'hl_close_position',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          perp: validated.perp,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+          transaction: {
+            to: sendTxNoSig.to,
+            data: sendTxNoSig.data,
+            value: typeof sendTxNoSig.value === 'bigint'
+              ? sendTxNoSig.value.toString()
+              : sendTxNoSig.value,
+          },
+        };
+      }
+
       const hlVault = buildHlVault(vault, { password: validated.password });
 
       if (isBuilderDex) {

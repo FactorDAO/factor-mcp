@@ -141,6 +141,42 @@ export const hlOpenPositionTool = {
         };
       }
 
+      // Stateless + main perp path: build EVM calldata (CoreWriter LimitOrder
+      // action 1) WITHOUT a signer. agent-executor routes the returned calldata
+      // through MandateHlSponsorV2.executeAsAgent (the same exec-as-agent
+      // pipeline the activation flow uses). No L1 signature needed because
+      // main-perp orders authenticate via the dispatching contract.
+      if (stateless && !isBuilderDex) {
+        const hlVaultStateless = buildHlVault(vault, {
+          password: validated.password,
+          requireSigner: false,
+        });
+        const sendTxNoSig: SendTransactionParams = await hlVaultStateless.openPosition({
+          perp: validated.perp,
+          isLong,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+        });
+        return {
+          success: true,
+          simulationMode: false,
+          action: 'hl_open_position',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          perp: validated.perp,
+          side: validated.side,
+          sizeUsd: validated.sizeUsd,
+          slippageBps,
+          transaction: {
+            to: sendTxNoSig.to,
+            data: sendTxNoSig.data,
+            value: typeof sendTxNoSig.value === 'bigint'
+              ? sendTxNoSig.value.toString()
+              : sendTxNoSig.value,
+          },
+        };
+      }
+
       const hlVault = buildHlVault(vault, { password: validated.password });
 
       // Non-stateless builder-dex path — sign + post via HL Exchange API,
