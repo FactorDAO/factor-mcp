@@ -88,6 +88,32 @@ export const hlSettlePendingTool = {
     const cloid = BigInt(validated.cloid) & UINT128_MASK;
 
     try {
+      // Stateless path: build calldata without a signer. settlePending is
+      // permissionless on-chain — agent-executor routes via the sponsor
+      // relay (executeAsAgent), same pattern as the open/close paths.
+      if (stateless) {
+        const hlVaultStateless = buildHlVault(vault, {
+          password: validated.password,
+          requireSigner: false,
+        });
+        const sendTxNoSig: SendTransactionParams = hlVaultStateless.settlePending(cloid);
+        return {
+          success: true,
+          simulationMode: false,
+          action: 'hl_settle_pending',
+          chainId: HYPEREVM_CHAIN_ID,
+          vault,
+          cloid: validated.cloid,
+          transaction: {
+            to: sendTxNoSig.to,
+            data: sendTxNoSig.data,
+            value: typeof sendTxNoSig.value === 'bigint'
+              ? sendTxNoSig.value.toString()
+              : sendTxNoSig.value,
+          },
+        };
+      }
+
       const hlVault = buildHlVault(vault, { password: validated.password });
       const sendTx: SendTransactionParams = hlVault.settlePending(cloid);
 
