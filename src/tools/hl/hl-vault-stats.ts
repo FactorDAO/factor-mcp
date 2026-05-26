@@ -17,8 +17,17 @@ export interface HlVaultStatsResult {
   nav: {
     evmUsdc: number;
     spotUsdc: number;
+    /** Main-dex perp account equity only (precompile read). For the
+     *  full perp leg INCLUDING builder dexes, sum `perpEquityByDex`
+     *  or use `nav.totalUsdc` (which already aggregates). */
     perpEquityUsdc: number;
+    /** Total NAV USD across EVM USDC + HL spot + every perp dex
+     *  (main + builder dexes the vault has equity on). */
     totalUsdc: number;
+    /** Per-dex perp account equity attribution. Always includes
+     *  `'main'`; additional keys (e.g. `'xyz'`) appear when the vault
+     *  has equity on HIP-3 builder dexes. */
+    perpEquityByDex: Record<string, number>;
   };
   share: {
     sharePriceUsdc: number;
@@ -73,7 +82,11 @@ export const hlVaultStatsTool = {
           evmUsdc: Number(stats.nav.evmUsdc) / 1e6,
           spotUsdc: Number(stats.nav.spotUsdc) / 1e6,
           perpEquityUsdc: Number(stats.nav.perpEquity) / 1e6,
-          totalUsdc: Number(stats.nav.totalUsdc) / 1e6,
+          // `stats.navUsdc` aggregates the main-dex precompile read +
+          // every builder dex's `accountValueUsd` from HL Info. The raw
+          // `stats.nav.totalUsdc` would silently drop builder-dex equity.
+          totalUsdc: stats.navUsdc,
+          perpEquityByDex: stats.perpEquityByDex,
         },
         share: {
           sharePriceUsdc: stats.share.sharePriceUsdc,

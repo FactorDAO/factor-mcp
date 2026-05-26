@@ -114,8 +114,17 @@ export interface HLVaultStats {
   vault: Address;
   asOf: string; // ISO timestamp
   nav: HLVaultNav;
-  /// NAV in USDC float (sum of legs).
+  /// NAV in USDC float. INCLUDES builder-dex sub-account equity
+  /// (xyz, flx, …) — `nav.perpEquity` itself only carries the main-dex
+  /// precompile read, so `navUsdc !== Number(nav.totalUsdc)/1e6` whenever
+  /// the vault has positions on a HIP-3 dex. Consumers should always
+  /// prefer this field over the raw `nav.totalUsdc`.
   navUsdc: number;
+  /// Per-dex perp account equity (USD) — 'main' matches the precompile
+  /// (`nav.perpEquity`), builder dexes ('xyz', …) come from the HL Info
+  /// `clearinghouseState.marginSummary.accountValue` read. Sums to
+  /// `navUsdc - (evmUsdc + spotUsdc)`.
+  perpEquityByDex: Record<string, number>;
   share: HLShareMetrics;
   positions: HLPositionsAggregate;
   /// One per dex the vault has equity on. Always includes 'main'.
@@ -299,7 +308,24 @@ export class HLVaultMetrics {
       this.getMarginSummariesAllDexes(),
     ]);
 
-    const navUsdc = Number(nav.totalUsdc) / 1e6;
+    // `nav.totalUsdc` only carries main-dex perp equity (the precompile
+    // read in `nav.ts` is hardcoded to `perpDex=0`). Builder-dex
+    // sub-accounts (xyz, flx, …) are read off-chain via HL Info's
+    // `clearinghouseState.marginSummary.accountValue` and surfaced here
+    // in `marginSummaries`. We assemble the *true* NAV by replacing the
+    // partial perp leg with the per-dex sum so callers (the MCP tool,
+    // the UI's NAV card, the jobs snapshot writer) all agree on a single
+    // TVL number. Until this was added, the wizard showed e.g.
+    // $15.31 on a vault that actually held $49.92 on `xyz`.
+    const perpEquityByDex: Record<string, number> = {};
+    let perpEquitySumUsd = 0;
+    for (const m of marginSummaries) {
+      perpEquityByDex[m.dex] = m.accountValueUsd;
+      perpEquitySumUsd += m.accountValueUsd;
+    }
+    const evmUsdcUsd = Number(nav.evmUsdc) / 1e6;
+    const spotUsdcUsd = Number(nav.spotUsdc) / 1e6;
+    const navUsdc = evmUsdcUsd + spotUsdcUsd + perpEquitySumUsd;
 
     let longCount = 0;
     let shortCount = 0;
@@ -330,6 +356,7 @@ export class HLVaultMetrics {
       asOf: new Date().toISOString(),
       nav,
       navUsdc,
+      perpEquityByDex,
       share,
       positions: {
         count: positions.length,
