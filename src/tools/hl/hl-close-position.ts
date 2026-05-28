@@ -97,15 +97,30 @@ export const hlClosePositionTool = {
         };
       }
 
-      // Stateless + main perp path: build EVM calldata (CoreWriter LimitOrder
-      // action 1, reduce-only) WITHOUT a signer. agent-executor routes via
-      // MandateHlSponsorV2.executeAsAgent. No L1 signature needed for main.
+      // Stateless + main perp path: return an UNSIGNED L1 exchange action
+      // (same envelope shape as the builder-dex branch above). Reason: the
+      // legacy EVM-adapter close (CoreWriter LimitOrder action 1) reads
+      // `current.szi` from the on-chain perp-storage precompile, which only
+      // sees positions opened through the EVM adapter's `openPosition`.
+      // Positions opened via `MandateHlSponsorV2.executeAsAgent` →
+      // CoreWriter live exclusively on HyperCore's L1 ledger and are
+      // invisible to that precompile, so `closePosition()` would throw
+      // `closePosition: no open position on perp <idx>` and the agent
+      // would never be able to exit them.
+      //
+      // HyperCore is authoritative for both EVM-adapter-opened AND
+      // L1-native positions, so routing every main-dex close through the
+      // L1 native exchange API (via /sign-hl-exchange) closes both
+      // classes correctly. The executor's existing builder-dex L1 plumbing
+      // (post the calldataRef to the signer, get a signed envelope back,
+      // forward to https://api.hyperliquid.xyz/exchange) is reused
+      // verbatim.
       if (stateless && !isBuilderDex) {
         const hlVaultStateless = buildHlVault(vault, {
           password: validated.password,
           requireSigner: false,
         });
-        const sendTxNoSig: SendTransactionParams = await hlVaultStateless.closePosition({
+        const built = await hlVaultStateless.buildClosePositionOffChainAction({
           perp: validated.perp,
           sizeUsd: validated.sizeUsd,
           slippageBps,
@@ -119,12 +134,16 @@ export const hlClosePositionTool = {
           perp: validated.perp,
           sizeUsd: validated.sizeUsd,
           slippageBps,
-          transaction: {
-            to: sendTxNoSig.to,
-            data: sendTxNoSig.data,
-            value: typeof sendTxNoSig.value === 'bigint'
-              ? sendTxNoSig.value.toString()
-              : sendTxNoSig.value,
+          l1Action: {
+            requiresL1Signing: true,
+            action: built.action,
+            nonce: built.nonce,
+            vaultAddress: built.vaultAddress,
+            isTestnet: false,
+            asset: built.asset,
+            limitPxReal: built.limitPxReal,
+            sizeReal: built.sizeReal,
+            isClosingBuy: built.isClosingBuy,
           },
         };
       }

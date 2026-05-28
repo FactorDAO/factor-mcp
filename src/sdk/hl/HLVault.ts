@@ -1860,22 +1860,55 @@ export class HLVault {
     sizeReal: string;
     isClosingBuy: boolean;
   }> {
-    const info = await this.resolveBuilderDex(args.perp);
-    if (info.markPxReal <= 0) {
-      throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
-    }
-    const dexName = args.perp.split(':')[0];
+    // Branch on `:` — builder-dex perps are qualified (`xyz:GOLD`), main-dex
+    // perps are bare (`BTC`). Builder uses `resolveBuilderDex` (HIP-3 catalog,
+    // per-dex globalAsset offset). Main uses the regular perp universe via
+    // `resolvePerp` + `getPerpAssetInfo`, with HL Info `clearinghouseState`
+    // queried with NO `dex` field (the master account view).
+    const isBuilderDex = args.perp.includes(':');
     const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
-    const [csRes, markRealLive] = await Promise.all([
-      this.exchange.fetchImpl(baseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'clearinghouseState', dex: dexName, user: this.vaultAddress }),
-      }),
-      this.getBuilderDexMarkPxReal(args.perp),
-    ]);
+
+    let assetIndex: number;
+    let markPxReal: number;
+    let szDecimals: number;
+    let positionCoinKey: string;
+    let infoBody: object;
+
+    if (isBuilderDex) {
+      const info = await this.resolveBuilderDex(args.perp);
+      if (info.markPxReal <= 0) {
+        throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
+      }
+      assetIndex = info.globalAsset;
+      markPxReal = await this.getBuilderDexMarkPxReal(args.perp);
+      szDecimals = info.szDecimals;
+      // HL Info returns the qualified `coin: "xyz:GOLD"` on builder dexes.
+      positionCoinKey = args.perp;
+      const dexName = args.perp.split(':')[0];
+      infoBody = { type: 'clearinghouseState', dex: dexName, user: this.vaultAddress };
+    } else {
+      // Main dex path.
+      const perpIdx = await this.resolvePerp(args.perp);
+      const assetInfo = await this.getPerpAssetInfo(perpIdx);
+      const liveMark = await this.getMarkPxReal(perpIdx);
+      if (!Number.isFinite(liveMark) || liveMark <= 0) {
+        throw new HLPreflightError('invalid-input', `no mark for ${args.perp}`, { perp: args.perp });
+      }
+      assetIndex = perpIdx;
+      markPxReal = liveMark;
+      szDecimals = assetInfo.szDecimals;
+      positionCoinKey = assetInfo.coin; // bare ticker, e.g. "BTC"
+      // No `dex` field — HL Info treats absence as the main perp ledger.
+      infoBody = { type: 'clearinghouseState', user: this.vaultAddress };
+    }
+
+    const csRes = await this.exchange.fetchImpl(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(infoBody),
+    });
     const cs = (await csRes.json()) as { assetPositions?: Array<{ position: { coin: string; szi: string } }> };
-    const pos = cs.assetPositions?.find((p) => p.position.coin === args.perp);
+    const pos = cs.assetPositions?.find((p) => p.position.coin === positionCoinKey);
     if (!pos || Number(pos.position.szi) === 0) {
       throw new HLPreflightError('invalid-input', `no open position on ${args.perp}`, { perp: args.perp });
     }
@@ -1884,11 +1917,11 @@ export class HLVault {
     const bandBps = args.slippageBps ?? 1500;
     const isClosingBuy = !isLong;
     const limitReal = isClosingBuy
-      ? markRealLive * (1 + bandBps / 10_000)
-      : markRealLive * (1 - bandBps / 10_000);
-    const limitRounded = tickRound(limitReal, info.szDecimals);
-    const sizeRaw = args.sizeUsd / info.markPxReal;
-    const lotStep = 10 ** -info.szDecimals;
+      ? markPxReal * (1 + bandBps / 10_000)
+      : markPxReal * (1 - bandBps / 10_000);
+    const limitRounded = tickRound(limitReal, szDecimals);
+    const sizeRaw = args.sizeUsd / markPxReal;
+    const lotStep = 10 ** -szDecimals;
     let sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
     // Same heuristic-full-close as closePositionOffChain — collapse near-
     // full closes to the actual on-chain size so we don't leave dust.
@@ -1903,12 +1936,12 @@ export class HLVault {
       );
     }
     const limitPxReal = String(limitRounded);
-    const sizeReal = hlFormatDecimal(sizeFloored, info.szDecimals);
+    const sizeReal = hlFormatDecimal(sizeFloored, szDecimals);
     const action = {
       type: 'order' as const,
       orders: [
         {
-          a: info.globalAsset,
+          a: assetIndex,
           b: isClosingBuy,
           p: limitPxReal,
           s: sizeReal,
@@ -1922,7 +1955,7 @@ export class HLVault {
       action,
       nonce: Date.now(),
       vaultAddress: this.vaultAddress,
-      asset: info.globalAsset,
+      asset: assetIndex,
       limitPxReal,
       sizeReal,
       isClosingBuy,
