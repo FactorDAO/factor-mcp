@@ -432,19 +432,76 @@ export class HLVault {
   public async getAllPositions(): Promise<
     Array<{ dex: string; perp: string; position: HLPosition }>
   > {
-    // ---- Main dex (precompile fast path) ----
-    const mainRaw = await this.getPositions();
-    const mainResolved: Array<{ dex: string; perp: string; position: HLPosition }> = await Promise.all(
+    // ---- Main dex ----
+    // Try the on-chain `activePerpIndices` precompile first. It covers the
+    // legacy path where positions were opened via the EVM adapter's
+    // `openPosition`. But positions opened in stateless mode for main perps
+    // now route through `MandateHlSponsorV2.executeAsAgent` →
+    // CoreWriter LimitOrder (action 1), which the perp-storage precompile
+    // does NOT track in `activePerpIndices`. Those positions only show up on
+    // HL Info's `clearinghouseState` (HyperCore L1 view).
+    //
+    // To make `getAllPositions` reflect HyperCore truth — what callers like
+    // `compileClosePosition` / `closePositionOffChain` need — we ALWAYS also
+    // read main-dex positions off-chain via HL Info, merge on `coin`, and
+    // prefer the HL Info row when both sources see the same asset (Info has
+    // the freshest mark/PnL and is the authoritative side of native L1
+    // orders). Precompile-only rows still show through, in case an EVM-
+    // adapter-only deployment trips through this same code path.
+    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
+
+    const [mainRaw, mainInfoRes] = await Promise.all([
+      this.getPositions().catch(() => [] as Array<{ perp: number; position: HLPosition }>),
+      this.exchange.fetchImpl(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'clearinghouseState', user: this.vaultAddress }),
+      }),
+    ]);
+
+    const mainByCoin = new Map<string, { dex: string; perp: string; position: HLPosition }>();
+
+    // Precompile-derived rows first (lower precedence).
+    const precompileResolved = await Promise.all(
       mainRaw.map(async ({ perp, position }) => {
         const info = await this.getPerpAssetInfo(perp);
         return { dex: 'main', perp: info.coin, position };
       }),
     );
+    for (const row of precompileResolved) {
+      if (row.position.szi !== 0n) mainByCoin.set(row.perp, row);
+    }
+
+    // HL Info clearinghouseState overrides per coin (authoritative for L1).
+    if (mainInfoRes.ok) {
+      const cs = (await mainInfoRes.json()) as ClearinghouseStateResponse;
+      const assetPositions = (cs.assetPositions ?? []).filter(
+        (ap) => Number(ap.position.szi) !== 0,
+      );
+      if (assetPositions.length > 0) {
+        // szDecimals per coin on the MAIN dex — one listPerps call covers all.
+        const mainPerps = await this.listPerps('main');
+        const szDecByCoin = new Map<string, number>(
+          mainPerps.map((p) => [p.name, p.szDecimals]),
+        );
+        for (const ap of assetPositions) {
+          const coin = ap.position.coin;
+          // Skip qualified builder-dex coins (`xyz:NVDA`) — those should
+          // surface from the builderResults branch below, not as main rows.
+          if (coin.includes(':')) continue;
+          const szDec = szDecByCoin.get(coin);
+          if (szDec === undefined) continue;
+          const position = projectBuilderPosition(ap.position, szDec);
+          mainByCoin.set(coin, { dex: 'main', perp: coin, position });
+        }
+      }
+    }
+
+    const mainResolved = Array.from(mainByCoin.values());
 
     // ---- Builder dexes (HL Info API) ----
     // `perpDexs` returns an ordered array where slot 0 = main = null. Every
     // other slot is a non-null dex spec; we read positions for each.
-    const baseUrl = this.exchange.endpointUrl.replace('/exchange', '/info');
     const dexsRes = await this.exchange.fetchImpl(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
