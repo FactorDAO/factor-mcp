@@ -1657,7 +1657,10 @@ export class HLVault {
     }
     const sziAbs = Math.abs(Number(pos.position.szi));
     const isLong = Number(pos.position.szi) > 0;
-    const bandBps = args.slippageBps ?? 1500;
+    // Widened default IOC band 1500 → 3000 bps. Mirrors the change in
+    // buildClosePositionOffChainAction below — see the longer comment
+    // there. Same dust-residual failure mode this side too.
+    const bandBps = args.slippageBps ?? 3000;
     // Close side flips: long → sell, short → buy.
     const isClosingBuy = !isLong;
     // Use the FRESH mark for limit-price band so an old cached mark
@@ -1671,12 +1674,11 @@ export class HLVault {
     const sizeRaw = args.sizeUsd / info.markPxReal;
     const lotStep = 10 ** -info.szDecimals;
     let sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
-    // Heuristic full-close: if the caller's notional rounds to ≥99% of
-    // the actual position size, use `szi` directly. Avoids leaving
-    // dust on a slightly-stale notional (mark moved between the
-    // caller fetching the position and the SDK pricing the close);
-    // also avoids accumulating dust positions across repeated closes.
-    if (sizeFloored >= sziAbs * 0.99) {
+    // Heuristic full-close: with the wider 3000 bps band, snap to the
+    // actual position any time the rounded computation reaches ≥95%
+    // of szi. The widened threshold (was 0.99) avoids leaving dust
+    // when mark moves between the caller's fetch and our pricing.
+    if (sizeFloored >= sziAbs * 0.95) {
       sizeFloored = sziAbs;
     }
     if (sizeFloored <= 0) {
@@ -1914,7 +1916,15 @@ export class HLVault {
     }
     const sziAbs = Math.abs(Number(pos.position.szi));
     const isLong = Number(pos.position.szi) > 0;
-    const bandBps = args.slippageBps ?? 1500;
+    // Widened default IOC band 1500 → 3000 bps (15% → 30%). The 15% band
+    // was leaving sub-atomic dust residuals on volatile/thin-liquidity
+    // closes: an IOC at mark ± 15% would fill the inner book depth and
+    // cancel the rest, locking the residual at the lot floor (e.g. $0.6
+    // on a HYPE close of $14). HL's oracle-floor protection (~10%) is
+    // safely inside the wider band, and the wider price tolerance
+    // converts the cancelled tail into actual fills — at most a 30 bp
+    // slippage cost in chop markets, far less than the dust loss.
+    const bandBps = args.slippageBps ?? 3000;
     const isClosingBuy = !isLong;
     const limitReal = isClosingBuy
       ? markPxReal * (1 + bandBps / 10_000)
@@ -1925,7 +1935,10 @@ export class HLVault {
     let sizeFloored = Math.floor(sizeRaw / lotStep) * lotStep;
     // Same heuristic-full-close as closePositionOffChain — collapse near-
     // full closes to the actual on-chain size so we don't leave dust.
-    if (sizeFloored >= sziAbs * 0.99) {
+    // Threshold loosened 99% → 95% in lockstep with the wider IOC band:
+    // the bigger band reduces partial-fill risk so even slightly less
+    // optimistic raw computations can safely snap to the actual position.
+    if (sizeFloored >= sziAbs * 0.95) {
       sizeFloored = sziAbs;
     }
     if (sizeFloored <= 0) {
