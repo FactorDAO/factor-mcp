@@ -137,21 +137,58 @@ export const flashloanTool = {
         environment,
       });
 
+      // Normalize adapter/action names from compute_flashloan_open_params output format.
+      // compute_flashloan_open_params returns lowercase aliases (openocean, aavefl, etc.) and
+      // short action names (swap, supply, borrow) that differ from the SDK property names.
+      const ADAPTER_ALIASES: Record<string, string> = {
+        openocean: 'openOcean',
+        aavefl: 'aaveFL',
+        balancerfl: 'balancerFL',
+      };
+      const ACTION_ALIASES: Record<string, string> = {
+        swap: 'swapBN',
+        supply: 'supplyAll',
+        borrow: 'borrowBN',
+        repay: 'repayAll',
+        withdraw: 'withdrawAll',
+      };
+
+      function normalizeFlParams(adapterKey: string, actionKey: string, params: Record<string, unknown>): Record<string, unknown> {
+        const p = Object.assign({}, params);
+        if (adapterKey === 'openOcean' && actionKey === 'swapBN') {
+          if (p.tokenIn && !p.tokenInAddress) { p.tokenInAddress = p.tokenIn; delete p.tokenIn; }
+          if (p.tokenOut && !p.tokenOutAddress) { p.tokenOutAddress = p.tokenOut; delete p.tokenOut; }
+          if (p.amount && p.amount !== 'all' && !p.amountInBN) { p.amountInBN = p.amount; delete p.amount; }
+        }
+        if (adapterKey === 'aave' && actionKey === 'supplyAll') {
+          if (p.asset && !p.assetAddress) { p.assetAddress = p.asset; delete p.asset; }
+          delete p.amount;
+        }
+        if (adapterKey === 'aave' && actionKey === 'borrowBN') {
+          if (p.asset && !p.debtAddress) { p.debtAddress = p.asset; delete p.asset; }
+          if (p.amount && !p.amountBN) { p.amountBN = p.amount; delete p.amount; }
+        }
+        return p;
+      }
+
       // Build the inner strategy steps (what happens during the flash loan)
       const innerBlocks: SendTransactionParams[] = [];
 
       for (const step of validated.strategySteps) {
-        const adapter = (strategyBuilder.adapter as any)[step.adapter];
+        const adapterKey = ADAPTER_ALIASES[step.adapter.toLowerCase()] ?? step.adapter;
+        const adapter = (strategyBuilder.adapter as any)[adapterKey];
         if (!adapter) {
-          throw new VaultError(`Unknown adapter: ${step.adapter}`);
+          throw new VaultError(`Unknown adapter: ${step.adapter} (normalized: ${adapterKey})`);
         }
 
-        const actionFn = adapter[step.action];
+        const actionKey = ACTION_ALIASES[step.action] ?? step.action;
+        const actionFn = adapter[actionKey];
         if (!actionFn) {
-          throw new VaultError(`Unknown action "${step.action}" on adapter "${step.adapter}"`);
+          throw new VaultError(`Unknown action "${step.action}" on adapter "${step.adapter}" (normalized action: ${actionKey})`);
         }
 
-        const block = actionFn.call(adapter, step.params);
+        const normalizedParams = normalizeFlParams(adapterKey, actionKey, (step.params ?? {}) as Record<string, unknown>);
+        const block = actionFn.call(adapter, normalizedParams);
         innerBlocks.push(block);
       }
 
