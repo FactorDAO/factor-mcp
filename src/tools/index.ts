@@ -75,6 +75,42 @@ import { lpAddLiquidityTool } from './lp/lp-add-liquidity.js';
 import { lpRemoveLiquidityTool } from './lp/lp-remove-liquidity.js';
 import { lpCollectFeesTool } from './lp/lp-collect-fees.js';
 
+// HyperLiquid tools (chain 999 only)
+import { hlOpenPositionTool } from './hl/hl-open-position.js';
+import { hlClosePositionTool } from './hl/hl-close-position.js';
+import { hlSetLeverageTool } from './hl/hl-set-leverage.js';
+import { hlAddIsolatedMarginTool } from './hl/hl-add-isolated-margin.js';
+import { hlAddApiWalletTool } from './hl/hl-add-api-wallet.js';
+import { hlDepositToPerpTool } from './hl/hl-deposit-to-perp.js';
+import { hlWithdrawToEvmTool } from './hl/hl-withdraw-to-evm.js';
+import { hlGetNavTool } from './hl/hl-get-nav.js';
+import { hlGetPositionsTool } from './hl/hl-get-positions.js';
+import { hlSetSlippageCapTool } from './hl/hl-set-slippage-cap.js';
+import { hlTransferToBuilderDexTool } from './hl/hl-transfer-to-builder-dex.js';
+import { hlTransferFromBuilderDexTool } from './hl/hl-transfer-from-builder-dex.js';
+import { hlListPerpsTool } from './hl/hl-list-perps.js';
+import { hlListInstrumentsTool } from './hl/hl-list-instruments.js';
+import { hlSearchInstrumentTool } from './hl/hl-search-instrument.js';
+import { hlResolveInstrumentTool } from './hl/hl-resolve-instrument.js';
+import { hlCompileOpenTool } from './hl/hl-compile-open.js';
+import { hlCompileCloseTool } from './hl/hl-compile-close.js';
+import { hlInitializeBuilderDexTool } from './hl/hl-initialize-builder-dex.js';
+import { hlSyncPositionTool } from './hl/hl-sync-position.js';
+import { hlSettlePendingTool } from './hl/hl-settle-pending.js';
+import { hlCancelOrderTool } from './hl/hl-cancel-order.js';
+import { hlCancelOrderOffchainTool } from './hl/hl-cancel-order-offchain.js';
+import { hlPlaceOrderRawTool } from './hl/hl-place-order-raw.js';
+import { hlForceForgetCloidTool } from './hl/hl-force-forget-cloid.js';
+import { hlSetMaxKnownBuilderDexTool } from './hl/hl-set-max-known-builder-dex.js';
+import { hlSpotSendTool } from './hl/hl-spot-send.js';
+import { hlListSpotTokensTool } from './hl/hl-list-spot-tokens.js';
+import { hlListDexesTool } from './hl/hl-list-dexes.js';
+import { hlVaultStatsTool } from './hl/hl-vault-stats.js';
+import { hlVaultPositionsDetailTool } from './hl/hl-vault-positions-detail.js';
+import { hlVaultFillsTool } from './hl/hl-vault-fills.js';
+import { hlVaultFundingTool } from './hl/hl-vault-funding.js';
+import { hlVaultRealizedPnlTool } from './hl/hl-vault-realized-pnl.js';
+
 // Yield tools
 import { pendleLpTool } from './yield/pendle-lp.js';
 
@@ -151,6 +187,40 @@ export {
   lpAddLiquidityTool,
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
+  hlOpenPositionTool,
+  hlClosePositionTool,
+  hlSetLeverageTool,
+  hlAddIsolatedMarginTool,
+  hlAddApiWalletTool,
+  hlDepositToPerpTool,
+  hlWithdrawToEvmTool,
+  hlGetNavTool,
+  hlGetPositionsTool,
+  hlSetSlippageCapTool,
+  hlTransferToBuilderDexTool,
+  hlTransferFromBuilderDexTool,
+  hlListPerpsTool,
+  hlListInstrumentsTool,
+  hlSearchInstrumentTool,
+  hlResolveInstrumentTool,
+  hlCompileOpenTool,
+  hlCompileCloseTool,
+  hlInitializeBuilderDexTool,
+  hlSyncPositionTool,
+  hlSettlePendingTool,
+  hlCancelOrderTool,
+  hlCancelOrderOffchainTool,
+  hlPlaceOrderRawTool,
+  hlForceForgetCloidTool,
+  hlSetMaxKnownBuilderDexTool,
+  hlSpotSendTool,
+  hlListSpotTokensTool,
+  hlListDexesTool,
+  hlVaultStatsTool,
+  hlVaultPositionsDetailTool,
+  hlVaultFillsTool,
+  hlVaultFundingTool,
+  hlVaultRealizedPnlTool,
   pendleLpTool,
   flashloanTool,
   previewTransactionTool,
@@ -243,6 +313,42 @@ export const allTools = [
   lpRemoveLiquidityTool,
   lpCollectFeesTool,
 
+  // HyperLiquid (34)
+  hlOpenPositionTool,
+  hlClosePositionTool,
+  hlSetLeverageTool,
+  hlAddIsolatedMarginTool,
+  hlAddApiWalletTool,
+  hlDepositToPerpTool,
+  hlWithdrawToEvmTool,
+  hlGetNavTool,
+  hlGetPositionsTool,
+  hlSetSlippageCapTool,
+  hlTransferToBuilderDexTool,
+  hlTransferFromBuilderDexTool,
+  hlListPerpsTool,
+  hlListInstrumentsTool,
+  hlSearchInstrumentTool,
+  hlResolveInstrumentTool,
+  hlCompileOpenTool,
+  hlCompileCloseTool,
+  hlInitializeBuilderDexTool,
+  hlSyncPositionTool,
+  hlSettlePendingTool,
+  hlCancelOrderTool,
+  hlCancelOrderOffchainTool,
+  hlPlaceOrderRawTool,
+  hlForceForgetCloidTool,
+  hlSetMaxKnownBuilderDexTool,
+  hlSpotSendTool,
+  hlListSpotTokensTool,
+  hlListDexesTool,
+  hlVaultStatsTool,
+  hlVaultPositionsDetailTool,
+  hlVaultFillsTool,
+  hlVaultFundingTool,
+  hlVaultRealizedPnlTool,
+
   // Yield (1)
   pendleLpTool,
 
@@ -318,6 +424,34 @@ export type ToolName =
   | 'factor_lp_add_liquidity'
   | 'factor_lp_remove_liquidity'
   | 'factor_lp_collect_fees'
+  | 'factor_hl_open_position'
+  | 'factor_hl_close_position'
+  | 'factor_hl_set_leverage'
+  | 'factor_hl_add_isolated_margin'
+  | 'factor_hl_add_api_wallet'
+  | 'factor_hl_deposit_to_perp'
+  | 'factor_hl_withdraw_to_evm'
+  | 'factor_hl_get_nav'
+  | 'factor_hl_get_positions'
+  | 'factor_hl_set_slippage_cap'
+  | 'factor_hl_transfer_to_builder_dex'
+  | 'factor_hl_transfer_from_builder_dex'
+  | 'factor_hl_list_perps'
+  | 'factor_hl_list_instruments'
+  | 'factor_hl_search_instrument'
+  | 'factor_hl_resolve_instrument'
+  | 'factor_hl_compile_open'
+  | 'factor_hl_compile_close'
+  | 'factor_hl_sync_position'
+  | 'factor_hl_settle_pending'
+  | 'factor_hl_cancel_order'
+  | 'factor_hl_cancel_order_offchain'
+  | 'factor_hl_place_order_raw'
+  | 'factor_hl_force_forget_cloid'
+  | 'factor_hl_set_max_known_builder_dex'
+  | 'factor_hl_spot_send'
+  | 'factor_hl_list_spot_tokens'
+  | 'factor_hl_list_dexes'
   | 'factor_pendle_lp'
   | 'factor_flashloan'
   | 'factor_preview_transaction'

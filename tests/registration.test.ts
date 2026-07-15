@@ -87,6 +87,18 @@ const EXPECTED_TOOL_NAMES = [
   'factor_lp_remove_liquidity',
   'factor_lp_collect_fees',
 
+  // HyperLiquid (10)
+  'factor_hl_open_position',
+  'factor_hl_close_position',
+  'factor_hl_set_leverage',
+  'factor_hl_add_isolated_margin',
+  'factor_hl_add_api_wallet',
+  'factor_hl_deposit_to_perp',
+  'factor_hl_withdraw_to_evm',
+  'factor_hl_get_nav',
+  'factor_hl_get_positions',
+  'factor_hl_set_slippage_cap',
+
   // Yield (1)
   'factor_pendle_lp',
 
