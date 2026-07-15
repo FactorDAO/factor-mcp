@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranches": ["main", "hyperliquid"],
+  "timezone": "Europe/Rome",
+  "schedule": ["before 7am on Monday"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group Factor SDK bumps on hyperliquid (mcp-gateway-dev build ref)",
+      "matchBaseBranches": ["hyperliquid"],
+      "matchPackageNames": ["@factordao/sdk", "@factordao/sdk-studio"],
+      "groupName": "factordao-sdk",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "main tracks pro-beta dist-tag for SDK — Renovate should not bump it",
+      "matchBaseBranches": ["main"],
+      "matchPackageNames": ["@factordao/sdk", "@factordao/sdk-studio"],
+      "enabled": false
+    },
+    {
+      "description": "Other npm deps on main",
+      "matchBaseBranches": ["main"],
+      "matchManagers": ["npm"],
+      "groupName": "npm-deps"
+    }
+  ]
+}
