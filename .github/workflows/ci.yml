@@ -24,7 +24,9 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm add @factordao/tokenlist
 
       - name: Typecheck
         run: pnpm run typecheck
