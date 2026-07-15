@@ -250,6 +250,16 @@
         "desc": "Performance fee percentage (0-100)"
       },
       {
+        "name": "ownerAddress",
+        "type": "string",
+        "desc": "Vault owner address; required in stateless mode"
+      },
+      {
+        "name": "feeReceiverAddress",
+        "type": "string",
+        "desc": "Address that receives vault fees; defaults to ownerAddress or wallet"
+      },
+      {
         "name": "maxCap",
         "type": "string",
         "desc": "Maximum vault cap in base units"

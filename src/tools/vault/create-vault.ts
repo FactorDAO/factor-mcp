@@ -42,6 +42,8 @@ export const createVaultSchema = z.object({
   managementFee: z.number().min(0).max(100).default(0),
   performanceFee: z.number().min(0).max(100).default(0),
   // Wallet
+  ownerAddress: z.string().optional(),
+  feeReceiverAddress: z.string().optional(),
   password: z.string().optional(),
 });
 
@@ -238,7 +240,11 @@ export const createVaultTool = {
       },
       ownerAddress: {
         type: 'string',
-        description: 'Owner address for vault (required in stateless mode). This address will be the vault owner and fee receiver.',
+        description: 'Owner address for vault (required in stateless mode). This address will own the vault.',
+      },
+      feeReceiverAddress: {
+        type: 'string',
+        description: 'Optional address that receives vault fees. Defaults to ownerAddress/local wallet when omitted.',
       },
     },
     required: ['name', 'symbol', 'assetDenominatorAddress'],
@@ -250,7 +256,7 @@ export const createVaultTool = {
       throw new VaultError('Invalid asset denominator address');
     }
 
-    // Resolve the address that will own the vault and receive fees.
+    // Resolve the address that will own the vault.
     //
     // IMPORTANT — order matters. In stateless mode `configManager.getWalletName()`
     // returns the literal placeholder string `'__stateless__'` (truthy) so logs
@@ -264,11 +270,11 @@ export const createVaultTool = {
     // before touching getWalletAddress at all.
     let userAddress: Address;
     if (configManager.isStateless()) {
-      const ownerAddr = (input as Record<string, unknown>).ownerAddress as string | undefined;
+      const ownerAddr = validated.ownerAddress;
       if (ownerAddr && isAddress(ownerAddr)) {
         userAddress = ownerAddr as Address;
       } else {
-        throw new VaultError('Stateless mode requires ownerAddress parameter (the wallet that will own the vault and receive fees).');
+        throw new VaultError('Stateless mode requires ownerAddress parameter (the wallet that will own the vault).');
       }
     } else {
       const walletName = configManager.getWalletName();
@@ -278,6 +284,15 @@ export const createVaultTool = {
         throw new WalletError('No wallet configured. Use factor_wallet_setup first.');
       }
     }
+
+    let feeReceiverAddress = userAddress;
+    if (validated.feeReceiverAddress) {
+      if (!isAddress(validated.feeReceiverAddress)) {
+        throw new VaultError('Invalid feeReceiverAddress');
+      }
+      feeReceiverAddress = validated.feeReceiverAddress as Address;
+    }
+
     const chain = configManager.getConfig().chain;
     const chainId = getChainIdEnum(chain);
     const environment = configManager.getEnvironment();
@@ -441,7 +456,7 @@ export const createVaultTool = {
           withdrawFeeBN: withdrawFeeBps,
           performanceFeeBN: performanceFeeBps,
           managementFeeBN: managementFeeBps,
-          feeReceiver: userAddress,
+          feeReceiver: feeReceiverAddress,
         },
       });
 
@@ -526,6 +541,7 @@ export const createVaultTool = {
             assetDenominator: validated.assetDenominatorAddress,
             assetDenominatorAccounting: denominatorAccountingAddress,
             owner: userAddress,
+            feeReceiver: feeReceiverAddress,
             fees: {
               deposit: validated.depositFee,
               withdraw: validated.withdrawFee,
@@ -549,6 +565,7 @@ export const createVaultTool = {
             assetDenominator: validated.assetDenominatorAddress,
             assetDenominatorAccounting: denominatorAccountingAddress,
             owner: userAddress,
+            feeReceiver: feeReceiverAddress,
             fees: {
               deposit: validated.depositFee,
               withdraw: validated.withdrawFee,
@@ -600,6 +617,7 @@ export const createVaultTool = {
           assetDenominator: validated.assetDenominatorAddress,
           assetDenominatorAccounting: denominatorAccountingAddress,
           owner: userAddress,
+          feeReceiver: feeReceiverAddress,
           fees: {
             deposit: validated.depositFee,
             withdraw: validated.withdrawFee,

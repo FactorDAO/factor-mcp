@@ -510,6 +510,8 @@ Deploy a new Factor Pro vault.
 | withdrawFee | number | No | 0 | Withdraw fee (0-100%) |
 | managementFee | number | No | 0 | Annual management fee |
 | performanceFee | number | No | 0 | Performance fee |
+| ownerAddress | string | No | - | Vault owner, required in stateless mode |
+| feeReceiverAddress | string | No | ownerAddress/wallet | Address that receives vault fees |
 | password | string | No | - | Wallet password |
 
 **Example - Simple Vault:**

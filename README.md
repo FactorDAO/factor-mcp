@@ -48,7 +48,7 @@ Or set `STATELESS_MODE=true` in the process environment.
 - All config getters (`getChain()`, `getChainId()`, `getRpcUrl()`, `getEnvironment()`) read from `AsyncLocalStorage` first, falling back to global config only in stdio mode.
 - State-mutating setters (`setChain()`, `setRpcUrl()`) throw in stateless mode to prevent global mutation.
 - `sendTransaction()` in `src/wallet/signer.ts` returns a `calldata` object (`{ to, data, value, chainId }`) instead of signing and broadcasting.
-- `factor_create_vault` accepts an `ownerAddress` parameter (required in stateless) to set the vault owner/fee receiver without needing a local wallet.
+- `factor_create_vault` accepts an `ownerAddress` parameter (required in stateless) to set the vault owner without needing a local wallet. Pass `feeReceiverAddress` when fee revenue must go to a different address.
 - `getClient()` in `src/sdk/client.ts` creates a fresh `PublicClient` per call in stateless mode instead of using the global cache, ensuring concurrent requests with different chains do not collide.
 
 ## Quick Start
