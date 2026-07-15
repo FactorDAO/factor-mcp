@@ -33,8 +33,8 @@
     "@factordao/sdk-studio": "pro-beta",
     "@factordao/vault-analytics": "^1.0.34",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "viem": "^1.10.14",
-    "zod": "^3.22.4"
+    "viem": "^2.55.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@noble/curves": "^1.9.1",
