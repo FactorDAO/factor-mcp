@@ -1,0 +1,57 @@
+# Keeps @factordao/sdk pins on `hyperliquid` aligned with npm releases.
+# mcp-gateway-dev clones factor-mcp@hyperliquid at build time (_FACTOR_MCP_REF).
+#
+# `main` tracks the pro-beta dist-tag for SDK deps intentionally — Dependabot
+# only manages non-SDK npm deps there.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: hyperliquid
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: Europe/Rome
+    allow:
+      - dependency-name: "@factordao/sdk"
+      - dependency-name: "@factordao/sdk-studio"
+    groups:
+      factordao-sdk:
+        patterns:
+          - "@factordao/sdk*"
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+      - sdk-sync
+      - hyperliquid
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: npm
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Rome
+    ignore:
+      - dependency-name: "@factordao/sdk"
+      - dependency-name: "@factordao/sdk-studio"
+    groups:
+      npm-production:
+        dependency-type: production
+        exclude-patterns:
+          - "@factordao/*"
+      npm-development:
+        dependency-type: development
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
+    open-pull-requests-limit: 5
