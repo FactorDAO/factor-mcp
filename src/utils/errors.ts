@@ -1,3 +1,5 @@
+import { redactSecrets } from './redact-secrets.js';
+
 export class FactorMcpError extends Error {
   constructor(
     message: string,
@@ -11,10 +13,16 @@ export class FactorMcpError extends Error {
     if (details instanceof FactorMcpError) {
       this.details = details.toJSON();
     } else if (details instanceof Error) {
+      // MND-1036: `details` is very often the raw underlying error from an
+      // RPC call (viem HttpRequestError on any Alchemy failure embeds the
+      // full request URL — key included — in .message/.stack). This is the
+      // single choke point nearly every tool handler in this repo routes
+      // through via `throw new SdkError('safe text', error)`, so redacting
+      // here closes the leak across the whole tool surface at once.
       this.details = {
-        message: details.message,
+        message: redactSecrets(details.message),
         name: details.name,
-        ...(details.stack ? { stack: details.stack } : {}),
+        ...(details.stack ? { stack: redactSecrets(details.stack) } : {}),
       };
     }
   }
@@ -90,15 +98,20 @@ export function formatError(error: unknown): { error: string; message: string; d
   }
 
   if (error instanceof Error) {
+    // MND-1036: same rationale as the FactorMcpError constructor above —
+    // this is the fallback path for any error that wasn't already wrapped
+    // in a FactorMcpError (e.g. a raw viem error thrown past a handler
+    // that didn't catch it), and it's the direct sink for the MCP tool
+    // response text via server.ts's top-level catch-all.
     return {
       error: 'UNKNOWN_ERROR',
-      message: error.message,
-      details: error.stack,
+      message: redactSecrets(error.message),
+      details: error.stack ? redactSecrets(error.stack) : error.stack,
     };
   }
 
   return {
     error: 'UNKNOWN_ERROR',
-    message: String(error),
+    message: redactSecrets(String(error)),
   };
 }

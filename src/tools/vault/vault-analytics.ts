@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isAddress } from 'viem';
 import { configManager } from '../../config/index.js';
 import { VaultError, SdkError } from '../../utils/errors.js';
+import { redactSecrets } from '../../utils/redact-secrets.js';
 import { FactorVaultAnalytics } from '@factordao/vault-analytics';
 import { ChainId as TokenlistChainId } from '@factordao/tokenlist';
 import { reconcileMorphoDepositsWithChain } from './morpho-onchain.js';
@@ -230,7 +231,12 @@ export const vaultAnalyticsTool = {
       };
     } catch (error) {
       if (error instanceof VaultError) throw error;
-      const details = error instanceof Error ? error.message : String(error);
+      // MND-1036: unlike `throw new SdkError('safe text', error)` elsewhere
+      // (where the FactorMcpError constructor sanitizes `error` as
+      // `details`), this interpolates the raw error text directly into the
+      // *message* itself — that bypasses the details-only sanitization, so
+      // redact here explicitly.
+      const details = redactSecrets(error instanceof Error ? error.message : String(error));
       throw new SdkError(`Failed to get vault analytics: ${details}`, error);
     }
   },

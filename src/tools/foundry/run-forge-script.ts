@@ -7,6 +7,7 @@ import { homedir } from 'os';
 import { configManager } from '../../config/index.js';
 import { getWalletAddress, getPrivateKey } from '../../wallet/key-manager.js';
 import { SdkError, WalletError } from '../../utils/errors.js';
+import { redactSecrets } from '../../utils/redact-secrets.js';
 
 const execAsync = promisify(exec);
 
@@ -204,7 +205,14 @@ export const runForgeScriptTool = {
         maxBuffer: 10 * 1024 * 1024,
       });
 
-      const output = stdout + '\n' + stderr;
+      // MND-1036: `--fork-url` above carries the Alchemy-keyed RPC URL.
+      // forge/reqwest connection-error text can echo it back into
+      // stdout/stderr, and every branch below returns a slice of this
+      // combined output directly as the tool result (none of them go
+      // through the SdkError/FactorMcpError choke point) — redact once
+      // here so every downstream field (rawOutput, traces, revertReason)
+      // is safe.
+      const output = redactSecrets(stdout + '\n' + stderr);
       const gasMatch = output.match(/Gas used:\s*(\d+)/);
       const successMatch = output.match(/Script ran successfully/i);
       const traces = extractTraces(output);
@@ -221,7 +229,8 @@ export const runForgeScriptTool = {
           : 'Forge script completed. Check rawOutput for details.',
       };
     } catch (error: any) {
-      const errorOutput = [error.stdout, error.stderr, error.message].filter(Boolean).join('\n');
+      // MND-1036: same rationale as the success-path `output` above.
+      const errorOutput = redactSecrets([error.stdout, error.stderr, error.message].filter(Boolean).join('\n'));
 
       // Compilation error
       if (errorOutput.includes('Compiler run failed') || errorOutput.match(/Error \(\d+\)/)) {
