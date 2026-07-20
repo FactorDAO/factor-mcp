@@ -4,20 +4,20 @@ import { ConfigurationError } from '../../utils/errors.js';
 import { clearCachedClients } from '../../wallet/signer.js';
 
 export const setChainSchema = z.object({
-  chain: z.enum(['ARBITRUM_ONE', 'BASE', 'MAINNET']),
+  chain: z.enum(['ARBITRUM_ONE', 'BASE', 'MAINNET', 'ROBINHOOD']),
 });
 
 export type SetChainInput = z.infer<typeof setChainSchema>;
 
 export const setChainTool = {
   name: 'factor_set_chain',
-  description: 'Set the active blockchain network for Factor Protocol operations. Supported chains: ARBITRUM_ONE (default), BASE, MAINNET (Ethereum).',
+  description: 'Set the active blockchain network for Factor Protocol operations. Supported chains: ARBITRUM_ONE (default), BASE, MAINNET (Ethereum), ROBINHOOD (4663).',
   inputSchema: {
     type: 'object',
     properties: {
       chain: {
         type: 'string',
-        enum: ['ARBITRUM_ONE', 'BASE', 'MAINNET'],
+        enum: ['ARBITRUM_ONE', 'BASE', 'MAINNET', 'ROBINHOOD'],
         description: 'The chain to switch to',
       },
     },

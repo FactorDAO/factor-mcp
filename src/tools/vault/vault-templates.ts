@@ -30,6 +30,7 @@ function getChainIdEnum(chain: string): ChainId {
     case 'ARBITRUM_ONE': return ChainId.ARBITRUM_ONE;
     case 'BASE': return ChainId.BASE;
     case 'MAINNET': return ChainId.MAINNET;
+    case 'ROBINHOOD': return 4663 as ChainId;
     default: return ChainId.ARBITRUM_ONE;
   }
 }

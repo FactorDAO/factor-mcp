@@ -1,6 +1,20 @@
 import { arbitrum, base, mainnet } from 'viem/chains';
 import { defineChain, type Chain } from 'viem';
 
+/** Robinhood Chain (4663) — local until viem ships it; mirrors @factordao/sdk. */
+const robinhoodChain: Chain = defineChain({
+  id: 4663,
+  name: 'Robinhood Chain',
+  network: 'robinhood',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
+    public: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
+  },
+});
+
+export const ROBINHOOD_CHAIN_ID = 4663 as const;
+
 // viem does not ship a HyperEVM definition yet, so we define it locally.
 // Chain id 999 + the canonical Hyperliquid public RPC; Alchemy also
 // hosts HL at `hyperliquid-mainnet.g.alchemy.com/v2/<KEY>`, used below.
@@ -19,6 +33,7 @@ export const SUPPORTED_CHAINS: Record<string, Chain> = {
   ARBITRUM_ONE: arbitrum,
   BASE: base,
   MAINNET: mainnet,
+  ROBINHOOD: robinhoodChain,
   HYPEREVM: hyperEvm,
 };
 
@@ -42,6 +57,7 @@ const CHAIN_ID_MAP: Record<number, SupportedChainName> = {
   42161: 'ARBITRUM_ONE',
   8453: 'BASE',
   1: 'MAINNET',
+  4663: 'ROBINHOOD',
   999: 'HYPEREVM',
 };
 
@@ -62,6 +78,7 @@ export function getAlchemyRpcUrl(chainName: SupportedChainName, apiKey: string):
     ARBITRUM_ONE: 'arb-mainnet',
     BASE: 'base-mainnet',
     MAINNET: 'eth-mainnet',
+    ROBINHOOD: 'robinhood-mainnet',
     HYPEREVM: 'hyperliquid-mainnet',
   };
 

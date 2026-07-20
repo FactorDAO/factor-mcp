@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { SupportedChainName, getChain, getAlchemyRpcUrl, getChainByChainId, DEFAULT_CHAIN } from './chains.js';
+import { SupportedChainName, getChain, getAlchemyRpcUrl, getChainByChainId, getChainNameByChainId, DEFAULT_CHAIN } from './chains.js';
 import { loadEnvironment, EnvironmentConfig, updateJsonConfig, loadJsonConfig, getConfigPath } from './environment.js';
 import type { Chain } from 'viem';
 
@@ -72,8 +72,7 @@ class ConfigManager {
   getConfig(): Readonly<ServerConfig> {
     const ctx = requestContext.getStore();
     if (ctx?.chainId) {
-      const chain = getChainByChainId(ctx.chainId);
-      const chainName = (chain.id === 42161 ? 'ARBITRUM_ONE' : chain.id === 8453 ? 'BASE' : 'MAINNET') as SupportedChainName;
+      const chainName = getChainNameByChainId(ctx.chainId);
       return {
         ...this.config,
         chain: chainName,
@@ -117,9 +116,8 @@ class ConfigManager {
     // In stateless mode, resolve RPC from request context chain
     const ctx = requestContext.getStore();
     if (ctx?.chainId) {
-      const chain = getChainByChainId(ctx.chainId);
-      const chainName = chain.name === 'Arbitrum One' ? 'ARBITRUM_ONE' : chain.name === 'Base' ? 'BASE' : 'MAINNET';
-      return this.resolveRpcUrl(chainName as SupportedChainName);
+      const chainName = getChainNameByChainId(ctx.chainId);
+      return this.resolveRpcUrl(chainName);
     }
     if (this._stateless) {
       throw new Error('Stateless mode: chainId is required to resolve RPC URL.');
