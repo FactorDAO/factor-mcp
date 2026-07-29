@@ -3,11 +3,12 @@ import { isAddress, type Address, formatUnits } from 'viem';
 import { configManager } from '../../config/index.js';
 import { sendTransaction, estimateGas, getPublicClient, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
-import { StudioProVault, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
+import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId, SendTransactionParams } from '@factordao/sdk';
 import { getTokenDecimals } from '../../utils/format.js';
 import { checkAdapterRegistered, AdapterNotRegisteredError } from '../../utils/adapter-check.js';
 
+import { getContractAddressesForChainOrThrow } from '../../utils/contract-addresses.js';
 export const swapOpenOceanSchema = z.object({
   vaultAddress: z.string(),
   tokenIn: z.string(),

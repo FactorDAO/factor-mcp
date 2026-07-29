@@ -3,9 +3,10 @@ import { isAddress, type Address } from 'viem';
 import { configManager } from '../../config/index.js';
 import { sendTransaction, estimateGas, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
-import { StudioProVault, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
+import { StudioProVault, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 
+import { getContractAddressesForChainOrThrow } from '../../utils/contract-addresses.js';
 const tokenTypeEnum = z.enum(['asset', 'debt']);
 
 export const addVaultTokenSchema = z.object({

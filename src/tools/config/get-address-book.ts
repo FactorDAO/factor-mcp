@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { configManager } from '../../config/index.js';
 import { SdkError } from '../../utils/errors.js';
-import { getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
+
+import { getContractAddressesForChainOrThrow } from '../../utils/contract-addresses.js';
 import { ChainId } from '@factordao/sdk';
 
 export const getAddressBookSchema = z.object({});
