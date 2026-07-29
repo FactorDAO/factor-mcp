@@ -23,6 +23,8 @@ const CHAIN_TO_OO: Record<string, string> = {
   ARBITRUM_ONE: 'arbitrum',
   BASE: 'base',
   MAINNET: 'eth',
+  // OpenOcean uses numeric chainId for Robinhood Chain (v3/4663 and v4/4663).
+  ROBINHOOD: '4663',
 };
 
 function getChainIdEnum(chain: string): ChainId {

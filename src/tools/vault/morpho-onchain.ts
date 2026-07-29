@@ -1,13 +1,31 @@
 import { createPublicClient, formatUnits, http, parseAbi } from 'viem';
 import { arbitrum, base, mainnet, optimism } from 'viem/chains';
 
-const MORPHO_BLUE = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
+/** CREATE2 Morpho Blue singleton (Base / Eth / Arb / Op). RHC uses era-2 deploy. */
+const MORPHO_BLUE_CREATE2 = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
+const MORPHO_BLUE_ROBINHOOD = '0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010';
+
+function morphoBlueAddress(chainId: number): `0x${string}` {
+  return (chainId === 4663 ? MORPHO_BLUE_ROBINHOOD : MORPHO_BLUE_CREATE2) as `0x${string}`;
+}
+
 const MORPHO_MARKET_ID_RE = /0x[a-fA-F0-9]{64}/;
 const MORPHO_ABI = parseAbi([
   'function position(bytes32 id, address user) view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)',
   'function market(bytes32 id) view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)',
   'function idToMarketParams(bytes32 id) view returns (address loanToken, address collateralToken, address oracle, address irm, uint256 lltv)',
 ]);
+
+const robinhood = {
+  id: 4663,
+  name: 'Robinhood Chain',
+  network: 'robinhood',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
+    public: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
+  },
+} as const;
 
 function morphoClient(chainId: number, alchemyApiKey: string) {
   const cfg = (() => {
@@ -20,13 +38,15 @@ function morphoClient(chainId: number, alchemyApiKey: string) {
         return { chain: arbitrum, host: 'arb-mainnet' };
       case 10:
         return { chain: optimism, host: 'opt-mainnet' };
+      case 4663:
+        return { chain: robinhood, host: 'robinhood-mainnet' };
       default:
         return null;
     }
   })();
   if (!cfg) return null;
   return createPublicClient({
-    chain: cfg.chain,
+    chain: cfg.chain as any,
     transport: http(`https://${cfg.host}.g.alchemy.com/v2/${alchemyApiKey}`),
   });
 }
@@ -84,15 +104,16 @@ export async function reconcileMorphoDepositsWithChain(
   await Promise.all(
     marketIds.map(async (marketId) => {
       try {
+        const morpho = morphoBlueAddress(chainId);
         const [position, market, params] = await Promise.all([
           client.readContract({
-            address: MORPHO_BLUE,
+            address: morpho,
             abi: MORPHO_ABI,
             functionName: 'position',
             args: [marketId, vaultAddress],
           }) as Promise<readonly [bigint, bigint, bigint]>,
           client.readContract({
-            address: MORPHO_BLUE,
+            address: morpho,
             abi: MORPHO_ABI,
             functionName: 'market',
             args: [marketId],
@@ -100,7 +121,7 @@ export async function reconcileMorphoDepositsWithChain(
             readonly [bigint, bigint, bigint, bigint, bigint, bigint]
           >,
           client.readContract({
-            address: MORPHO_BLUE,
+            address: morpho,
             abi: MORPHO_ABI,
             functionName: 'idToMarketParams',
             args: [marketId],

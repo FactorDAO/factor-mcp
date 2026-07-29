@@ -340,8 +340,17 @@ export function getKnownAdapters(): AdapterInfo[] {
       name: 'Morpho',
       protocol: 'Morpho',
       supportedActions: ['supplyBN', 'supplyAll', 'supplyByPercentage', 'supplyCollateralBN', 'supplyCollateralAll', 'borrowBN', 'repayBN', 'repayAll', 'repayByPercentage', 'withdrawBN', 'withdrawAll', 'withdrawByPercentage', 'withdrawCollateralBN', 'withdrawCollateral'],
-      description: 'Morpho lending protocol - supply, borrow, repay, withdraw, plus collateral operations. Pro adapter deployed on Base and Ethereum only.',
-      chains: ['BASE', 'MAINNET'],
+      description: 'Morpho Blue lending — supply/borrow/repay/withdraw + collateral. On Robinhood uses era-2 Blue 0x9D53… (alongside Morpho Vault / steakUSDG earn).',
+      chains: ['BASE', 'MAINNET', 'ARBITRUM_ONE', 'ROBINHOOD'],
+      category: 'lending',
+    },
+    {
+      id: 'morphoVault',
+      name: 'Morpho Vault',
+      protocol: 'Morpho',
+      supportedActions: ['depositBN', 'depositAll', 'withdrawBN', 'withdrawAll', 'addVault'],
+      description: 'Morpho Vault V2 earn (e.g. steakUSDG on Robinhood). Coexists with Morpho Blue on ROBINHOOD.',
+      chains: ['BASE', 'MAINNET', 'ROBINHOOD'],
       category: 'lending',
     },
 
@@ -361,7 +370,7 @@ export function getKnownAdapters(): AdapterInfo[] {
       protocol: 'OpenOcean',
       supportedActions: ['swapBN', 'swapAll'],
       description: 'OpenOcean DEX aggregator - aggregated swaps across multiple DEXes. Requires openOceanSwapData from OpenOcean API.',
-      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET'],
+      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET', 'ROBINHOOD'],
       category: 'dex',
     },
     {
@@ -414,7 +423,7 @@ export function getKnownAdapters(): AdapterInfo[] {
       protocol: 'Factor',
       supportedActions: ['addAdapter', 'removeAdapter'],
       description: 'Vault adapter management - add or remove protocol adapters from a vault',
-      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET'],
+      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET', 'ROBINHOOD'],
       category: 'policy',
     },
     {
@@ -423,7 +432,7 @@ export function getKnownAdapters(): AdapterInfo[] {
       protocol: 'Factor',
       supportedActions: ['addAsset', 'addDebt', 'removeAsset', 'removeDebt'],
       description: 'Vault asset/debt management - register or remove asset and debt tokens with accounting adapters',
-      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET'],
+      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET', 'ROBINHOOD'],
       category: 'policy',
     },
     {
@@ -432,7 +441,7 @@ export function getKnownAdapters(): AdapterInfo[] {
       protocol: 'Factor',
       supportedActions: ['setDepositPolicy'],
       description: 'Vault deposit policy management - configure deposit restrictions and strategies',
-      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET'],
+      chains: ['ARBITRUM_ONE', 'BASE', 'MAINNET', 'ROBINHOOD'],
       category: 'policy',
     },
 

@@ -11,6 +11,12 @@ const robinhoodChain: Chain = defineChain({
     default: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
     public: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
   },
+  contracts: {
+    multicall3: {
+      address: '0xcA11bde05977b3631167028862bE2a173976CA11',
+      blockCreated: 1,
+    },
+  },
 });
 
 export const ROBINHOOD_CHAIN_ID = 4663 as const;

@@ -9,7 +9,7 @@ import { HYPEREVM_CHAIN_ID, assertHyperEvmChain } from './common.js';
 import { encodeAddApiWallet } from '../../sdk/hl/coreWriter.js';
 import { HL_ADDRESSES_999 } from '../../sdk/hl/HLVault.js';
 
-const slotEnum = z.enum(['primary', 'risk', 'backup', '']);
+const slotEnum = z.enum(['primary', 'risk', 'backup', 'default']);
 
 export const hlAddApiWalletSchema = z.object({
   vault: z.string(),
@@ -34,8 +34,12 @@ export const hlAddApiWalletTool = {
       },
       slotName: {
         type: 'string',
-        enum: ['primary', 'risk', 'backup', ''],
-        description: 'Named slot for this agent. Empty string = default slot.',
+        // Gemini / Google AI Studio rejects empty-string enum members
+        // (`enum[n]: cannot be empty`). HL's unnamed default slot is the
+        // empty string on-chain — map the explicit "default" sentinel below.
+        enum: ['primary', 'risk', 'backup', 'default'],
+        description:
+          'Named slot for this agent. Use "default" for the unnamed HL slot (empty name on-chain).',
       },
       password: { type: 'string', description: 'Wallet password if encrypted.' },
     },
@@ -52,6 +56,7 @@ export const hlAddApiWalletTool = {
 
     const vault = validated.vault as Address;
     const agent = validated.agentEoa as Address;
+    const hlSlotName = validated.slotName === 'default' ? '' : validated.slotName;
 
     try {
       // The HLVault.ensureAgent() helper only registers the SDK's own
@@ -61,7 +66,7 @@ export const hlAddApiWalletTool = {
       // the studioProV1 ABI — matching what HLVault would have produced.
       const innerBlock = encodeAddApiWallet(HL_ADDRESSES_999.adapter, {
         apiWallet: agent,
-        name: validated.slotName,
+        name: hlSlotName,
       });
       const sendTx: SendTransactionParams = {
         to: vault,
@@ -78,7 +83,10 @@ export const hlAddApiWalletTool = {
       };
 
       if (configManager.isSimulationMode()) {
-        const gasEstimate = await estimateGas(txParams).catch(() => ({ gasLimit: 0n, totalCostEth: '0' }));
+        const gasEstimate = await estimateGas(txParams).catch(() => ({
+          gasLimit: 0n,
+          totalCostEth: '0',
+        }));
         return {
           success: true,
           simulationMode: true,
@@ -87,6 +95,7 @@ export const hlAddApiWalletTool = {
           vault,
           agentEoa: agent,
           slotName: validated.slotName,
+          hlSlotName,
           transaction: { to: sendTx.to, data: sendTx.data },
           gasEstimate: {
             gasLimit: gasEstimate.gasLimit.toString(),
@@ -104,11 +113,12 @@ export const hlAddApiWalletTool = {
         vault,
         agentEoa: agent,
         slotName: validated.slotName,
+        hlSlotName,
         transactionHash: result.hash,
       };
-    } catch (error) {
-      if (error instanceof VaultError || error instanceof WalletError) throw error;
-      throw new SdkError('Failed to register HL API wallet', error);
+    } catch (err) {
+      if (err instanceof VaultError || err instanceof WalletError) throw err;
+      throw new SdkError('Failed to register HL API wallet', err);
     }
   },
 };

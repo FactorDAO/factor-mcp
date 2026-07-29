@@ -21,8 +21,10 @@ function getChainIdEnum(chain: string): ChainId {
       return ChainId.BASE;
     case 'MAINNET':
       return ChainId.ETHEREUM;
+    case 'ROBINHOOD':
+      return 4663 as ChainId;
     default:
-      return ChainId.ARBITRUM_ONE;
+      throw new Error(`Unsupported chain for lending tokens: ${chain}`);
   }
 }
 

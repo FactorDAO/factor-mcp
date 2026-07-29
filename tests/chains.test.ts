@@ -43,4 +43,14 @@ describe('Robinhood Chain (4663) config', () => {
       expect(configManager.getRpcUrl()).toBe(configManager.getConfig().rpcUrl);
     });
   });
+
+  it('vault analytics accepts ROBINHOOD chain context', async () => {
+    const { vaultAnalyticsTool } = await import('../src/tools/vault/vault-analytics.js');
+    expect(vaultAnalyticsTool.name).toBe('factor_vault_analytics');
+    await expect(
+      configManager.runWithContext({ chainId: 4663, environment: 'production' }, async () => {
+        await vaultAnalyticsTool.handler({ vaultAddress: 'not-an-address' });
+      }),
+    ).rejects.toThrow(/Invalid vault address/);
+  });
 });

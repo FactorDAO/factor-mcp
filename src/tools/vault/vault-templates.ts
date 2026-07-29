@@ -23,6 +23,11 @@ const TOKEN_ADDRESSES: Record<string, Record<string, { address: string; decimals
     USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, symbol: 'USDC' },
     WETH: { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18, symbol: 'WETH' },
   },
+  ROBINHOOD: {
+    USDG: { address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', decimals: 6, symbol: 'USDG' },
+    WETH: { address: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', decimals: 18, symbol: 'WETH' },
+    steakUSDG: { address: '0xBeEff033F34C046626B8D0A041844C5d1A5409dd', decimals: 18, symbol: 'steakUSDG' },
+  },
 };
 
 function getChainIdEnum(chain: string): ChainId {
@@ -40,7 +45,9 @@ function getTokenlistChainId(chain: string): TokenlistChainId {
     case 'ARBITRUM_ONE': return TokenlistChainId.ARBITRUM_ONE;
     case 'BASE': return TokenlistChainId.BASE;
     case 'MAINNET': return TokenlistChainId.ETHEREUM;
-    default: return TokenlistChainId.ARBITRUM_ONE;
+    case 'ROBINHOOD': return 4663 as TokenlistChainId;
+    default:
+      throw new Error(`Unsupported chain for tokenlist: ${chain}`);
   }
 }
 
@@ -634,7 +641,7 @@ export const vaultTemplatesTool = {
       denominator: {
         type: 'string',
         description: 'DIRECT MODE: Filter by denominator token. If not provided, returns all available templates for the current chain.',
-        enum: ['USDC', 'USDC.e', 'USDbC', 'USDT', 'WETH'],
+        enum: ['USDC', 'USDC.e', 'USDbC', 'USDT', 'WETH', 'USDG', 'steakUSDG'],
       },
       lendingProtocol: {
         type: 'string',
