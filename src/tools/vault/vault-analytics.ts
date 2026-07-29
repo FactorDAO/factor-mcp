@@ -17,6 +17,8 @@ const CHAIN_MAP: Record<string, number> = {
   BASE: TokenlistChainId.BASE,
   MAINNET: TokenlistChainId.ETHEREUM,
   OPTIMISM: TokenlistChainId.OPTIMISM,
+  // Tokenlist npm may lag RHC publish — numeric 4663 is canonical.
+  ROBINHOOD: 4663,
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

@@ -464,7 +464,7 @@ describe('hl_add_api_wallet — zod schema', () => {
   });
   it('accepts empty slot', () => {
     expect(() =>
-      hlAddApiWalletSchema.parse({ vault: VALID_VAULT, agentEoa: VALID_AGENT, slotName: '' }),
+      hlAddApiWalletSchema.parse({ vault: VALID_VAULT, agentEoa: VALID_AGENT, slotName: 'default' }),
     ).not.toThrow();
   });
   it('rejects unknown slot name', () => {
