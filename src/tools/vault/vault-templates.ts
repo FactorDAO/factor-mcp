@@ -1,12 +1,11 @@
 import { configManager } from '../../config/index.js';
-import { StudioProVaultStats } from '@factordao/sdk-studio';
+import { getContractAddressesForChainOrThrow, StudioProVaultStats } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { FactorTokenlist, ChainId as TokenlistChainId } from '@factordao/tokenlist';
 import { getPublicClient } from '../../wallet/signer.js';
 import { getTokenSymbol, getTokenDecimals } from '../../utils/format.js';
 import type { Address } from 'viem';
 
-import { getContractAddressesForChainOrThrow } from '../../utils/contract-addresses.js';
 // Well-known token addresses per chain
 const TOKEN_ADDRESSES: Record<string, Record<string, { address: string; decimals: number; symbol: string }>> = {
   ARBITRUM_ONE: {

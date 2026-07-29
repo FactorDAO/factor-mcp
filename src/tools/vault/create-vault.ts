@@ -4,13 +4,12 @@ import { configManager } from '../../config/index.js';
 import { getWalletAddress } from '../../wallet/key-manager.js';
 import { sendTransaction, estimateGas, getPublicClient, type TransactionParams } from '../../wallet/signer.js';
 import { VaultError, WalletError, SdkError } from '../../utils/errors.js';
-import { StudioProFactory, StudioProVaultStats } from '@factordao/sdk-studio';
+import { StudioProFactory, StudioProVaultStats, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 import { generateDeployVaultScript } from '../../templates/index.js';
 import { saveForgeScript } from '../foundry/run-forge-script.js';
 import { formatWei, getTokenDecimals } from '../../utils/format.js';
 
-import { getContractAddressesForChainOrThrow } from '../../utils/contract-addresses.js';
 export const createVaultSchema = z.object({
   name: z.string().min(1).max(50),
   symbol: z.string().min(1).max(10),
