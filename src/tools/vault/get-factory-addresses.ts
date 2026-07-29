@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { configManager } from '../../config/index.js';
 import { SdkError } from '../../utils/errors.js';
-import { StudioProVaultStats, StrategyBuilder, getContractAddressesForChainOrThrow } from '@factordao/sdk-studio';
+import { StudioProVaultStats, StrategyBuilder } from '@factordao/sdk-studio';
 import { ChainId } from '@factordao/sdk';
 
+import { getContractAddressesForChainOrThrow } from '../../utils/contract-addresses.js';
 export const getFactoryAddressesSchema = z.object({
   search: z.string().optional(),
 });
