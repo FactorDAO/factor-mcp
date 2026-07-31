@@ -57,6 +57,20 @@ class ConfigManager {
   }
 
   private resolveRpcUrl(chain: SupportedChainName): string {
+    // Per-chain override, e.g. RPC_URL_ROBINHOOD — same naming convention
+    // already used by every Kairos/Mandate service (backend's getRpcUrl,
+    // signing-service's chains.ts, mcp-gateway's own chain_helpers.py).
+    // Checked BEFORE the chain-blind customRpcUrl below, same "local
+    // override always wins" rule those services already enforce — without
+    // this, a multi-chain fork stack (one anvil per chain) has no way to
+    // route factor-mcp's own subprocess-routed tools (factor_get_vault_info,
+    // factor_lend_*, etc.) to the right fork per chain; only the single
+    // legacy RPC_URL exists, which can only ever point at one chain at a time.
+    const perChainOverride = process.env[`RPC_URL_${chain}`];
+    if (perChainOverride) {
+      return perChainOverride;
+    }
+
     if (this.env.customRpcUrl) {
       return this.env.customRpcUrl;
     }
