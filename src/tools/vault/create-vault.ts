@@ -394,6 +394,66 @@ export const createVaultTool = {
         debtAccountingAddresses: (validated.initialDebtAccountingAddresses || []) as Address[],
       });
 
+      // ── Withdraw-adapter validation fallback for factories with no
+      // standalone withdrawAdapters mapping (e.g. StudioProV1Factory.sol,
+      // deployed on newer chains like Robinhood Chain) ────────────────────
+      // validateStrategy() probes `withdrawAdapters(address)` on the factory
+      // whenever the subgraph has no withdraw-adapter data. On a
+      // V1-shaped factory that function doesn't exist at all — the probe
+      // reverts, and the SDK's try/catch treats a revert identically to a
+      // clean `false`, so every withdraw adapter is misreported as "not
+      // whitelisted" even when it's genuinely fine. StudioProV1Factory's own
+      // on-chain deployVault() constructor validates initialWithdrawAdapters
+      // against `managerAdapters`, not a separate mapping (confirmed against
+      // the real Solidity source — StudioProV1Factory.sol has no
+      // `withdrawAdapters` state at all), so that's the correct fallback —
+      // but only once we've independently proven the probe reverts rather
+      // than returning a real boolean, so a genuine V3/V4-factory rejection
+      // (a real, separate withdraw-adapter whitelist gap) still fails.
+      const failedWithdrawAdapters = validationResult.withdrawAdapters.filter(
+        (a: { address: string; isValid: boolean }) => !a.isValid
+      );
+      if (failedWithdrawAdapters.length > 0) {
+        const client = getPublicClient();
+        // proFactory.factoryAddress is private in the SDK's type declarations
+        // (even though it's a plain runtime property) — re-resolve the same
+        // address the SDK itself used, via the same address-book lookup.
+        const { factor_studio_pro_factory: factoryAddress } = getContractAddressesForChainOrThrow(chainId, environment);
+        const withdrawAdaptersAbi = parseAbi(['function withdrawAdapters(address) view returns (bool)']);
+        const managerAdaptersAbi = parseAbi(['function managerAdapters(address) view returns (bool)']);
+        for (const entry of failedWithdrawAdapters) {
+          let withdrawAdapterFnExists = true;
+          try {
+            await client.readContract({
+              address: factoryAddress as Address,
+              abi: withdrawAdaptersAbi,
+              functionName: 'withdrawAdapters',
+              args: [entry.address as Address],
+            });
+          } catch {
+            withdrawAdapterFnExists = false;
+          }
+          if (!withdrawAdapterFnExists) {
+            const isManagerAdapter = await client.readContract({
+              address: factoryAddress as Address,
+              abi: managerAdaptersAbi,
+              functionName: 'managerAdapters',
+              args: [entry.address as Address],
+            });
+            if (isManagerAdapter) {
+              entry.isValid = true;
+            }
+          }
+        }
+        validationResult.isValid =
+          validationResult.managerAdapters.every((a: { isValid: boolean }) => a.isValid) &&
+          validationResult.ownerAdapters.every((a: { isValid: boolean }) => a.isValid) &&
+          validationResult.withdrawAdapters.every((a: { isValid: boolean }) => a.isValid) &&
+          validationResult.assetAddresses.every((a: { isValid: boolean }) => a.isValid) &&
+          validationResult.assetAccountingAddresses.every((a: { isValid: boolean }) => a.isValid) &&
+          validationResult.debtAddresses.every((a: { isValid: boolean }) => a.isValid);
+      }
+
       if (!validationResult.isValid) {
         // Build detailed error message
         const invalidItems: string[] = [];
