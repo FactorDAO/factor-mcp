@@ -4,9 +4,12 @@ import { arbitrum, base, mainnet, optimism } from 'viem/chains';
 /** CREATE2 Morpho Blue singleton (Base / Eth / Arb / Op). RHC uses era-2 deploy. */
 const MORPHO_BLUE_CREATE2 = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
 const MORPHO_BLUE_ROBINHOOD = '0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010';
+const MORPHO_BLUE_GNOSIS = '0xB74D4dd451E250bC325AFF0556D717e4E2351c66';
 
 function morphoBlueAddress(chainId: number): `0x${string}` {
-  return (chainId === 4663 ? MORPHO_BLUE_ROBINHOOD : MORPHO_BLUE_CREATE2) as `0x${string}`;
+  if (chainId === 4663) return MORPHO_BLUE_ROBINHOOD as `0x${string}`;
+  if (chainId === 100) return MORPHO_BLUE_GNOSIS as `0x${string}`;
+  return MORPHO_BLUE_CREATE2 as `0x${string}`;
 }
 
 const MORPHO_MARKET_ID_RE = /0x[a-fA-F0-9]{64}/;

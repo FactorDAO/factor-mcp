@@ -23,6 +23,9 @@ function getChainIdEnum(chain: string): ChainId {
       return ChainId.ETHEREUM;
     case 'ROBINHOOD':
       return 4663 as ChainId;
+    case 'GNOSIS':
+      return 100 as ChainId;
+    case 'GNOSIS': return 100 as ChainId;
     default:
       throw new Error(`Unsupported chain for lending tokens: ${chain}`);
   }
