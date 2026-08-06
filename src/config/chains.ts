@@ -1,4 +1,4 @@
-import { arbitrum, base, mainnet } from 'viem/chains';
+import { arbitrum, base, mainnet, gnosis as viemGnosis } from 'viem/chains';
 import { defineChain, type Chain } from 'viem';
 
 /** Robinhood Chain (4663) — local until viem ships it; mirrors @factordao/sdk. */
@@ -20,6 +20,7 @@ const robinhoodChain: Chain = defineChain({
 });
 
 export const ROBINHOOD_CHAIN_ID = 4663 as const;
+export const GNOSIS_CHAIN_ID = 100 as const;
 
 // viem does not ship a HyperEVM definition yet, so we define it locally.
 // Chain id 999 + the canonical Hyperliquid public RPC; Alchemy also
@@ -40,6 +41,7 @@ export const SUPPORTED_CHAINS: Record<string, Chain> = {
   BASE: base,
   MAINNET: mainnet,
   ROBINHOOD: robinhoodChain,
+  GNOSIS: viemGnosis,
   HYPEREVM: hyperEvm,
 };
 
@@ -64,6 +66,7 @@ const CHAIN_ID_MAP: Record<number, SupportedChainName> = {
   8453: 'BASE',
   1: 'MAINNET',
   4663: 'ROBINHOOD',
+  100: 'GNOSIS',
   999: 'HYPEREVM',
 };
 
@@ -85,6 +88,7 @@ export function getAlchemyRpcUrl(chainName: SupportedChainName, apiKey: string):
     BASE: 'base-mainnet',
     MAINNET: 'eth-mainnet',
     ROBINHOOD: 'robinhood-mainnet',
+    GNOSIS: 'gnosis-mainnet',
     HYPEREVM: 'hyperliquid-mainnet',
   };
 

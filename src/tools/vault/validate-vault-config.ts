@@ -29,6 +29,9 @@ function getChainIdEnum(chain: string): ChainId {
       return ChainId.MAINNET;
     case 'ROBINHOOD':
       return 4663 as ChainId;
+    case 'GNOSIS':
+      return 100 as ChainId;
+    case 'GNOSIS': return 100 as ChainId;
     default:
       return ChainId.ARBITRUM_ONE;
   }

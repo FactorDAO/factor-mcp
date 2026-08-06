@@ -25,6 +25,7 @@ const CHAIN_TO_OO: Record<string, string> = {
   MAINNET: 'eth',
   // OpenOcean uses numeric chainId for Robinhood Chain (v3/4663 and v4/4663).
   ROBINHOOD: '4663',
+  GNOSIS: 'xdai',
 };
 
 function getChainIdEnum(chain: string): ChainId {
@@ -37,6 +38,9 @@ function getChainIdEnum(chain: string): ChainId {
       return ChainId.MAINNET;
     case 'ROBINHOOD':
       return 4663 as ChainId;
+    case 'GNOSIS':
+      return 100 as ChainId;
+    case 'GNOSIS': return 100 as ChainId;
     default:
       return ChainId.ARBITRUM_ONE;
   }

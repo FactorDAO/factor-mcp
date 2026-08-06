@@ -28,6 +28,12 @@ const TOKEN_ADDRESSES: Record<string, Record<string, { address: string; decimals
     WETH: { address: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', decimals: 18, symbol: 'WETH' },
     steakUSDG: { address: '0xBeEff033F34C046626B8D0A041844C5d1A5409dd', decimals: 18, symbol: 'steakUSDG' },
   },
+  GNOSIS: {
+    'USDC.e': { address: '0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0', decimals: 6, symbol: 'USDC.e' },
+    WETH: { address: '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1', decimals: 18, symbol: 'WETH' },
+    WXDAI: { address: '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', decimals: 18, symbol: 'WXDAI' },
+    GNO: { address: '0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb', decimals: 18, symbol: 'GNO' },
+  },
 };
 
 function getChainIdEnum(chain: string): ChainId {
@@ -36,6 +42,7 @@ function getChainIdEnum(chain: string): ChainId {
     case 'BASE': return ChainId.BASE;
     case 'MAINNET': return ChainId.MAINNET;
     case 'ROBINHOOD': return 4663 as ChainId;
+    case 'GNOSIS': return 100 as ChainId;
     default: return ChainId.ARBITRUM_ONE;
   }
 }
@@ -46,6 +53,7 @@ function getTokenlistChainId(chain: string): TokenlistChainId {
     case 'BASE': return TokenlistChainId.BASE;
     case 'MAINNET': return TokenlistChainId.ETHEREUM;
     case 'ROBINHOOD': return 4663 as TokenlistChainId;
+    case 'GNOSIS': return 100 as TokenlistChainId;
     default:
       throw new Error(`Unsupported chain for tokenlist: ${chain}`);
   }
