@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import { configManager } from '../../config/index.js';
 import { getWalletAddress, getPrivateKey } from '../../wallet/key-manager.js';
 import { SdkError, WalletError } from '../../utils/errors.js';
+import { redactSecrets } from '../../utils/redact-secrets.js';
 
 const execAsync = promisify(exec);
 
@@ -68,7 +69,9 @@ async function startAnvilFork(rpcUrl: string): Promise<number> {
 
     anvilProcess.stderr?.on('data', (data) => {
       if (!started) {
-        reject(new Error(`Anvil error: ${data.toString()}`));
+        // MND-1036: anvil's stderr can echo the --fork-url (Alchemy key
+        // included) on a connection failure — redact at the source.
+        reject(new Error(`Anvil error: ${redactSecrets(data.toString())}`));
       }
     });
 
@@ -340,7 +343,7 @@ export const simulateTransactionTool = {
           // Step failed — stop execution and report
           stopAnvil();
 
-          const errorMessage = stepError.message || stepError.toString();
+          const errorMessage = redactSecrets(stepError.message || stepError.toString());
           const revertMatch = errorMessage.match(/revert[:\s]*(.*?)(?:\n|$)/i);
           const revertReason = revertMatch ? revertMatch[1].trim() : undefined;
 
@@ -386,7 +389,12 @@ export const simulateTransactionTool = {
     } catch (error: any) {
       stopAnvil();
 
-      const errorMessage = error.message || error.toString();
+      // MND-1036: `error` can be startAnvilFork's rejection, whose message
+      // embeds the Alchemy-keyed --fork-url when anvil fails to reach it.
+      // `errorMessage` feeds both the `rawError` field below (bypasses the
+      // SdkError choke point entirely on the revert-shaped branch) and the
+      // fallback `throw new SdkError(...)` — redact once here for both.
+      const errorMessage = redactSecrets(error.message || error.toString());
 
       if (errorMessage.includes('revert')) {
         const revertMatch = errorMessage.match(/revert[:\s]*(.*?)(?:\n|$)/i);
