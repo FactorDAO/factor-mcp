@@ -36,8 +36,8 @@
     "@factordao/vault-analytics": "1.0.37",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@msgpack/msgpack": "^3.1.3",
-    "viem": "^1.10.14",
-    "zod": "^3.22.4"
+    "viem": "^2.55.11",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@noble/curves": "^1.9.1",
